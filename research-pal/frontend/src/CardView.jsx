@@ -170,7 +170,13 @@ function Field({ name, label, f, paperId, cardId = "", hasPdf, onSave, notify, b
             <p className={"answer" + (f.status === "not_stated" || f.status === "not_found" ? " muted" : "")}>{f.answer}</p>
           )
         ) : (
-          <p className="answer muted">The AI gave no proof for this claim, so the card hides it. Read the paper yourself, or write the answer.</p>
+          <p className="answer muted">
+            {f.status === "unverified"
+              ? "The AI gave no proof for this claim, so the card hides it. Read the paper yourself, or write the answer."
+              : f.status === "suggestion" || f.status === "yours"
+                ? "The AI made no suggestion. Click Edit to write your own."
+                : "Nothing here yet."}
+          </p>
         )}
 
         {f.status === "not_found" && onFill && !editing && (

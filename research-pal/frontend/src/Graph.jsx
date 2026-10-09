@@ -86,14 +86,14 @@ function layout(nodes, edges) {
     for (let i = 0; i < n; i++)
       for (let j = i + 1; j < n; j++) {
         const dx = pos[i].x - pos[j].x, dy = pos[i].y - pos[j].y;
-        const d2 = Math.max(dx * dx + dy * dy, 25), d = Math.sqrt(d2), f = 3200 / d2;
+        const d2 = Math.max(dx * dx + dy * dy, 25), d = Math.sqrt(d2), f = 11000 / d2;
         pos[i].vx += (dx / d) * f; pos[i].vy += (dy / d) * f;
         pos[j].vx -= (dx / d) * f; pos[j].vy -= (dy / d) * f;
       }
     for (const e of edges) {
       const a = pos[idx.get(e.source)], b = pos[idx.get(e.target)];
       if (!a || !b) continue;
-      const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 1, f = (d - 150) * 0.02;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx * dx + dy * dy) || 1, f = (d - 210) * 0.02;
       a.vx += (dx / d) * f; a.vy += (dy / d) * f;
       b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
     }
@@ -156,15 +156,20 @@ export default function Graph({ onOpenCard, notify }) {
             </g>
           );
         })}
-        {g.nodes.map((n) => {
+        {g.nodes.map((n, idx) => {
           const p = pos[n.id];
           if (!p) return null;
           const t = n.title.length > 30 ? n.title.slice(0, 29) + "…" : n.title;
+          // Two near nodes would print their names on top of each other. The later one puts its name above its dot.
+          const above = g.nodes.slice(0, idx).some((o) => {
+            const q = pos[o.id];
+            return q && Math.abs(q.x - p.x) < 220 && Math.abs(q.y - p.y) < 36;
+          });
           return (
             <g key={n.id} className={"gnode v-" + (n.verdict || "none")} transform={`translate(${p.x},${p.y})`} tabIndex={0} role="button" aria-label={n.title}
               onClick={() => onOpenCard(n.id)} onKeyDown={(e) => e.key === "Enter" && onOpenCard(n.id)}>
               <circle r="10" />
-              <text y="26" textAnchor="middle">{t}</text>
+              <text y={above ? -18 : 26} textAnchor="middle">{t}</text>
             </g>
           );
         })}

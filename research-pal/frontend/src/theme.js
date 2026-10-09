@@ -1,6 +1,6 @@
 // Light, Dark or System. The choice is saved in this browser. index.html applies it before the first paint.
 const KEY = "rp-theme";
-const COLORS = { light: "#FAFAF9", dark: "#000000" };
+const COLORS = { light: "#F6F6F7", dark: "#0B0B0E" };
 
 export function getMode() {
   try {

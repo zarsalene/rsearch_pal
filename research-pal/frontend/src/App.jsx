@@ -5,7 +5,7 @@ import Library from "./Library.jsx";
 import CardView from "./CardView.jsx";
 import Chat from "./Chat.jsx";
 import Search from "./Search.jsx";
-import Graph from "./Graph.jsx";
+import LinksTab from "./LinksTab.jsx";
 import Settings from "./Settings.jsx";
 import { Icon, Logo } from "./icons.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
@@ -121,7 +121,7 @@ export default function App() {
             <Icon name="sidebar" size={18} />
           </button>
           <Logo size={26} />
-          Research Pal
+          <span className="brand-name">Research Pal</span>
         </div>
         <nav className="tabs" role="tablist" aria-label="Sections">
           {shownTabs.map(([k, label, icon]) => (
@@ -206,7 +206,7 @@ export default function App() {
           )}
           {page === "glossary" && <Glossary reloadKey={glossKey} notify={setNotice} />}
           {tab === "search" && <Search onOpenCard={openPaper} notify={setNotice} />}
-          {tab === "links" && <Graph onOpenCard={openPaper} notify={setNotice} />}
+          {tab === "links" && <LinksTab onOpenCard={openPaper} notify={setNotice} />}
           {tab === "settings" && (
             <Settings
               config={config}
