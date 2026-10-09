@@ -36,3 +36,18 @@
 .avatar3d { width: 100%; max-width: 280px; height: 260px; margin: 0 auto; touch-action: pan-y; cursor: grab; }
 .avatar3d canvas { display: block; margin: 0 auto; }
 .avatar-flat { display: block; width: 160px; height: 200px; margin: 0 auto; }
+
+/* ---- Duck Island (Sprint 14) ---- */
+.island .islandwrap{max-width:640px;margin:8px 0;border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-md);outline-offset:2px}
+.island .islandwrap:focus-visible{outline:2px solid var(--accent)}
+.islandcanvas{display:block;width:100%;height:auto;cursor:pointer}
+.islandbtns{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.playpanel{border:var(--edge);border-radius:var(--r-lg);padding:14px 16px;margin:10px 0;background:var(--surface)}
+.playprompt{font-family:var(--serif);font-size:1.05rem;margin:6px 0 12px}
+.playoptions{display:grid;gap:8px;margin-bottom:8px}
+.playoptions .btn{text-align:left;white-space:normal}
+.playsources{padding-left:1.1em;font-size:.92rem}
+.playsources li.ok span{color:var(--ok);font-weight:600}
+.playsources li.miss span{color:var(--warn);font-weight:600}
+.shoplist{list-style:none;padding:0;margin:8px 0;display:grid;gap:6px}
+.shoplist li{display:flex;align-items:center;gap:10px}

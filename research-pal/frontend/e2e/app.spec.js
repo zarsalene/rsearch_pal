@@ -414,13 +414,15 @@ test.describe.serial("Research Pal", () => {
   expect(found).toBe(true); // a section has cards with checked quotes
 
   await page.getByLabel("Your text").fill("Two papers study this question.\n");
+  // wait for the save that has both quotes. The older "Saved" note of the first save is not enough: it made this test flaky.
+  const saved = page.waitForResponse((r) => r.url().includes("/api/review-doc/sections/") && r.request().method() === "PUT" && (r.request().postData() || "").split("\\n> ").length > 2);
   await page.getByRole("button", { name: /Insert quote/ }).nth(0).click();
   await page.getByRole("button", { name: /Insert quote/ }).nth(1).click();
   const area = page.getByLabel("Your text");
   const value = await area.inputValue();
   expect(value.split("\n").filter((l) => l.startsWith("> "))).toHaveLength(2);
   expect(value).toMatch(/\(Smith & Wei, 2024, p\. \d\)/); // the citation with the page
-  await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible(); // autosave
+  await saved; // autosave
 
   await page.reload(); // the text is not lost
   await page.getByRole("tab", { name: "Write" }).click();
@@ -439,6 +441,36 @@ test.describe.serial("Research Pal", () => {
   expect(text).toContain("## References");
   expect(text).toContain("Smith, J., & Wei, L. (2024).");
 });
+
+  test("Duck Island: play Quote Hunt, see the sources, win coins, buy an item and place it; play gives no points", async ({ page }) => {
+    await signIn(page, true);
+    await page.getByRole("tab", { name: "Journey" }).click();
+    const level = page.getByRole("region", { name: "Level", exact: true });
+    const points = async () => Number(((await level.textContent()).match(/(\d+) points/) || [])[1]);
+    const before = await points();
+    await page.getByRole("button", { name: "Open Duck Island" }).click();
+    const island = page.getByRole("region", { name: "Duck Island" });
+    await expect(island).toContainText("Play gives no points and no levels");
+    await island.getByRole("button", { name: /Go to Quote Hunt/ }).click();
+    const round = page.getByRole("region", { name: "Quote Hunt" });
+    const result = page.getByRole("region", { name: "Round result" });
+    for (let i = 0; i < 5; i++) {
+      await expect(round.or(result).first()).toBeVisible();
+      if (await result.isVisible()) break;
+      await round.locator(".playoptions button").first().click();
+    }
+    await expect(result).toContainText("right");
+    await expect(result).toContainText("page"); // each source shows its page and its quote
+    await result.getByRole("button", { name: "Back to the island" }).click();
+    // the shop: the coins of work and play pay for a flower (5 coins)
+    await island.getByRole("button", { name: /Go to the Shop/ }).click();
+    await island.getByRole("button", { name: "Buy Flower for 5 coins" }).click();
+    await expect(island.getByText("You have it.")).toBeVisible();
+    await island.getByRole("button", { name: "Close the shop" }).click();
+    await island.getByRole("button", { name: "Decorate" }).click();
+    await island.getByRole("button", { name: "Place at the Duck" }).click();
+    expect(await points()).toBe(before); // play and shop gave no points
+  });
 
 });
 

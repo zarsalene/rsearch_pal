@@ -76,6 +76,10 @@ def init() -> None:
               id TEXT PRIMARY KEY, code TEXT UNIQUE, earned_at REAL);
             CREATE TABLE IF NOT EXISTS rewards(
               id TEXT PRIMARY KEY, text TEXT, condition TEXT, earned_at REAL, claimed INTEGER DEFAULT 0, created_at REAL);
+            CREATE TABLE IF NOT EXISTS play_rounds(
+              id TEXT PRIMARY KEY, game TEXT, questions_json TEXT, created_at REAL, date TEXT, finished INTEGER DEFAULT 0, score INTEGER DEFAULT 0, coins INTEGER DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS play_items(
+              code TEXT PRIMARY KEY, bought_at REAL, x INTEGER DEFAULT -1, y INTEGER DEFAULT -1);
             CREATE TABLE IF NOT EXISTS ai_log(
               id INTEGER PRIMARY KEY AUTOINCREMENT, time REAL, feature TEXT, paper_id TEXT, provider TEXT, model TEXT);
             """
@@ -942,3 +946,59 @@ def set_setting(key: str, value: str) -> None:
     _ensure_settings_table()
     with conn() as c:
         c.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+# ---------- Duck Island (Sprint 14): rounds of the mini-games and the items that the student bought ----------
+def play_round_add(game: str, questions: list[dict], date: str, rid: str | None = None) -> str:
+    rid = rid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO play_rounds(id,game,questions_json,created_at,date) VALUES(?,?,?,?,?)", (rid, game, json.dumps(questions, ensure_ascii=False), now(), date))
+    return rid
+
+
+def play_round_get(rid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM play_rounds WHERE id=?", (rid,)).fetchone()
+    return {**dict(r), "questions": json.loads(r["questions_json"])} if r else None
+
+
+def play_round_finish(rid: str, score: int, coins: int) -> bool:
+    """False if the round is finished already. The table update is the lock: a round pays one time only."""
+    with conn() as c:
+        return c.execute("UPDATE play_rounds SET finished=1, score=?, coins=? WHERE id=? AND finished=0", (score, coins, rid)).rowcount > 0
+
+
+def play_rounds_all() -> list[dict]:
+    with conn() as c:
+        return [{**dict(r), "questions": json.loads(r["questions_json"])} for r in c.execute("SELECT * FROM play_rounds ORDER BY created_at")]
+
+
+def play_coins_on(date: str) -> int:
+    with conn() as c:
+        return c.execute("SELECT COALESCE(SUM(coins),0) AS n FROM play_rounds WHERE finished=1 AND date=?", (date,)).fetchone()["n"]
+
+
+def play_coins_total() -> int:
+    with conn() as c:
+        return c.execute("SELECT COALESCE(SUM(coins),0) AS n FROM play_rounds WHERE finished=1").fetchone()["n"]
+
+
+def play_items_list() -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM play_items ORDER BY bought_at")]
+
+
+def play_item_buy(code: str, when: float | None = None, x: int = -1, y: int = -1) -> bool:
+    with conn() as c:
+        return c.execute("INSERT OR IGNORE INTO play_items(code,bought_at,x,y) VALUES(?,?,?,?)", (code, when or now(), x, y)).rowcount > 0
+
+
+def play_item_place(code: str, x: int, y: int) -> None:
+    with conn() as c:
+        c.execute("UPDATE play_items SET x=?, y=? WHERE code=?", (x, y, code))
+
+
+def play_review_material() -> list[dict]:
+    """Quiz questions and glossary words from the papers: the rows that have a quote."""
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM review_items WHERE quote != '' AND kind IN ('quiz','glossary') ORDER BY created_at, id")]
