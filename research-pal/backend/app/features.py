@@ -12,6 +12,7 @@ REGISTRY: dict[str, dict] = {
     "feynman": {"label": "Explain it to me", "description": "Write the main idea of a paper in your own words. The AI shows what is right, partly right or wrong, with quotes.", "default": True},
     "eli12": {"label": "Like I am 12", "description": "A simple text, an example and an analogy for one field of a card.", "default": True},
     "quiz": {"label": "Quiz me", "description": "Questions about a paper. Each question has a quote from the PDF as its source.", "default": True},
+    "today": {"label": "Today page", "description": "The home page: your goal, three tasks, one next best action, a focus timer and your wins.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 

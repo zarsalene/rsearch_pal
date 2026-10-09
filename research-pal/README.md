@@ -88,6 +88,24 @@ Open a card and click **Understand**. There are three parts. Each part has a swi
 
 The backup file holds your attempts and your questions.
 
+## Today page
+
+**Today** is the first page after you sign in. It uses no AI, so it opens fast.
+
+- **Title and question:** your thesis title and question stay at the top.
+- **Next best action:** one big button. The server picks it with simple rules, in this order:
+  1. A card has a field that the AI did not find → "Search the paper again".
+  2. A sub-question has 0 or 1 paper → "Find a paper for SQ2".
+  3. A paper has no explanation of yours → "Explain this paper in your own words".
+  4. Else → "Write your win of the day". When you wrote it, the page says that you did enough and that rest is part of the work.
+  - With no paper, the action is "Add your first paper".
+- **Goals of today:** small goals that you write. Check them when you finish. Three are enough.
+- **Focus timer:** 25 minutes of focus and 5 minutes of rest. You can change both. You can link a session to a goal or to a paper. The timer uses the clock, so it is right when the tab is in the background. The server counts the real minutes of each session. The timer asks for no sound unless you switch it on.
+- **Win of the day:** write one small win. On a bad day, click **Show my past wins** to see 5 old wins.
+- **Streak, Level, Quest and Review:** these boxes are empty now. They come in later sprints.
+
+The page never shows a word of blame. The backup file holds your goals, wins and focus sessions. The switch **Today page** in Settings → Features turns the page off.
+
 ## AI use log
 
 The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.
@@ -199,7 +217,7 @@ npm run e2e                 # tests in a real browser
 ## Feature switches
 
 Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has two entries: **Chat** and **Thesis direction**.
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me** and **Word helper and glossary**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary** and **Today page**.
 
 ## Later (your list)
 
