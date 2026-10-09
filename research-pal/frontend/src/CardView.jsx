@@ -5,6 +5,7 @@ import MindMap from "./MindMap.jsx";
 import TagChips from "./TagChips.jsx";
 import SimpleText from "./SimpleText.jsx";
 import Understand from "./Understand.jsx";
+import Quality from "./Quality.jsx";
 import MetaBlock from "./MetaBlock.jsx";
 import { citeStyle } from "./Write.jsx";
 
@@ -355,6 +356,7 @@ function CardTabs({ list, active, onPick, onAdd, canAdd }) {
 export default function CardView({ id, subQuestions = [], tags = {}, onChanged, onDeleted, notify, parts = { feynman: true, eli12: true, quiz: true }, onHideDuck }) {
   const [view, setView] = useState("card"); // "card" or "understand"
   const understandOn = parts.feynman || parts.eli12 || parts.quiz;
+  const critiqueOn = !!parts.critique;
   const [data, setData] = useState(null);
   const [tagBusy, setTagBusy] = useState(false);
   const [purpose, setPurpose] = useState("");
@@ -531,16 +533,24 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
 
       {card && <Summary card={card} paperId={id} cardId={cid} />}
 
-      {card && understandOn && (
+      {card && (understandOn || critiqueOn) && (
         <div className="viewseg" role="tablist" aria-label="View of the card">
           <button role="tab" aria-selected={view === "card"} onClick={() => setView("card")}>
             <Icon name="doc" size={14} /> Card
           </button>
-          <button role="tab" aria-selected={view === "understand"} onClick={() => setView("understand")}>
-            <Icon name="sparkle" size={14} /> Understand
-          </button>
+          {understandOn && (
+            <button role="tab" aria-selected={view === "understand"} onClick={() => setView("understand")}>
+              <Icon name="sparkle" size={14} /> Understand
+            </button>
+          )}
+          {critiqueOn && (
+            <button role="tab" aria-selected={view === "quality"} onClick={() => setView("quality")}>
+              <Icon name="check" size={14} /> Quality
+            </button>
+          )}
         </div>
       )}
+      {card && critiqueOn && view === "quality" && <Quality paperId={id} notify={notify} />}
       {card && understandOn && view === "understand" && <Understand paperId={id} cardId={cid} card={card} parts={parts} onHideDuck={onHideDuck} notify={notify} />}
 
       {card && (() => {
@@ -565,7 +575,7 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
 
       <FocusBar current={paper.focus || ""} keywords={card?.keywords} busy={inProgress} onApply={(focus) => again({ focus })} />
 
-      {card && (view === "card" || !understandOn) && (
+      {card && (view === "card" || !(understandOn || critiqueOn)) && (
         <>
           {card.focus && card.fields?.focus && (
             <section className="focus-card" aria-label="Focus">

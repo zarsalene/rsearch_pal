@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
+import Gaps from "./Gaps.jsx";
 
 // Put a quote in the text, on its own line, at the place of the cursor. The line starts with ">" so that it is a quote, not your words.
 export function insertQuote(text, pos, quote, cite) {
@@ -67,7 +68,36 @@ const writeDraft = (id, text) => {
   }
 };
 
-export default function Write({ notify, onChanged }) {
+const KIND_LABEL = { clear: "Clear", logical: "Logical", sourced: "Sourced", style: "Style" };
+
+// Comments of the coach, at the side of the text, like a review in a word processor. The coach never writes text for you.
+function CoachPanel({ result, onJump }) {
+  return (
+    <div className="coachpanel" role="region" aria-label="Coach comments">
+      <h3>Coach</h3>
+      <p className="small muted">{result.message} The coach gives no new text. You write.</p>
+      {result.note && <p className="small warn-line">{result.note}</p>}
+      <ul>
+        {result.comments.map((c, i) => (
+          <li key={i} className={"ccomment " + c.kind}>
+            <button className="link" onClick={() => onJump(c)} aria-label={`Go to the sentence: ${c.sentence.slice(0, 40)}`}>
+              “{c.sentence.slice(0, 50)}{c.sentence.length > 50 ? "…" : ""}”
+            </button>
+            <p>
+              <strong>{KIND_LABEL[c.kind]}</strong>: {c.comment}{" "}
+              <span className="small muted">{c.source === "ai" ? "AI opinion" : c.source === "server" ? "Checked in your library" : "Rule"}</span>
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default function Write({ notify, onChanged, gapsOn = false, coachOn = false }) {
+  const [view, setView] = useState("write"); // "write" or "gaps"
+  const [coach, setCoach] = useState(null);
+  const [coachBusy, setCoachBusy] = useState(false);
   const [doc, setDoc] = useState(null);
   const [selected, setSelected] = useState("");
   const [text, setText] = useState("");
@@ -173,6 +203,21 @@ export default function Write({ notify, onChanged }) {
     }
   };
 
+  const runCoach = async () => {
+    setCoachBusy(true);
+    try {
+      setCoach(await api.coach(text));
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setCoachBusy(false);
+    }
+  };
+  const jump = (c) => {
+    area.current?.focus();
+    area.current?.setSelectionRange(c.start, c.end);
+  };
+
   if (!doc) return <p className="muted">Loading…</p>;
   return (
     <section className="write">
@@ -206,6 +251,19 @@ export default function Write({ notify, onChanged }) {
       </header>
       <p className="lead">You write the text. The app gives you the headings, your cards and their checked quotes. A line that starts with “&gt;” is a quote. It does not count as your words.</p>
 
+      {gapsOn && (
+        <div className="viewseg" role="tablist" aria-label="Part of the review">
+          <button role="tab" aria-selected={view === "write"} onClick={() => setView("write")}>
+            Write
+          </button>
+          <button role="tab" aria-selected={view === "gaps"} onClick={() => setView("gaps")}>
+            Gaps
+          </button>
+        </div>
+      )}
+      {gapsOn && view === "gaps" && <Gaps notify={notify} onUsed={() => load(selected)} />}
+
+      {(!gapsOn || view === "write") && (
       <div className="write-grid">
         <nav className="outline" aria-label="Outline">
           <div className="row">
@@ -262,6 +320,12 @@ export default function Write({ notify, onChanged }) {
               <p className="small muted" role="status">
                 {status} · {current.words} words
               </p>
+              {coachOn && (
+                <button className="btn small ghost" onClick={runCoach} disabled={coachBusy || text.trim().length < 20}>
+                  {coachBusy ? "Reading…" : "Coach"}
+                </button>
+              )}
+              {coach && <CoachPanel result={coach} onJump={jump} />}
               {current.unverified_quotes.length > 0 && (
                 <p className="warn-line" role="alert">
                   {current.unverified_quotes.length === 1 ? "1 quote is" : `${current.unverified_quotes.length} quotes are`} not in your PDFs. You changed a quote, or it comes from another source. Check it.
@@ -278,6 +342,7 @@ export default function Write({ notify, onChanged }) {
           {current ? <Sources section={current} onInsert={insert} /> : <p className="small muted">Choose a section.</p>}
         </aside>
       </div>
+      )}
     </section>
   );
 }

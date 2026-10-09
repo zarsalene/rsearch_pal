@@ -90,6 +90,15 @@ export const api = {
   reviewGarden: (date, tz) => request(`/api/review/garden?date=${date}&tz=${tz}`),
   rateReview: (id, rating, date) => request(`/api/review/${id}`, { method: "POST", json: { rating, date } }),
   journeyMap: () => request("/api/journey/map"),
+  // Gap finder, writing coach, quality check. The server checks each quote. The AI parts have the label "AI opinion".
+  runGaps: (body) => request("/api/gaps", { method: "POST", json: body }),
+  getGaps: (sq = "") => request(`/api/gaps?sub_question_id=${encodeURIComponent(sq)}`),
+  setGapStatus: (id, status) => request(`/api/gaps/${id}`, { method: "PUT", json: { status } }),
+  useGap: (id) => request(`/api/gaps/${id}/use`, { method: "POST" }),
+  coach: (text) => request("/api/coach", { method: "POST", json: { text } }),
+  runCritique: (pid) => request(`/api/papers/${pid}/critique`, { method: "POST" }),
+  getCritique: (pid) => request(`/api/papers/${pid}/critique`),
+  editCritique: (pid, answers, confirm) => request(`/api/papers/${pid}/critique`, { method: "PUT", json: { answers, confirm } }),
   // Duck Island. The server makes the questions, keeps the answers and the coins.
   play: () => request("/api/play"),
   newRound: (game) => request("/api/play/rounds", { method: "POST", json: { game } }),

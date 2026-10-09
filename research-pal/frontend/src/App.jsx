@@ -211,7 +211,7 @@ export default function App() {
                 id={selected}
                 subQuestions={on("direction") ? subQuestions : []}
                 tags={paperTags}
-                parts={{ feynman: on("feynman"), eli12: on("eli12"), quiz: on("quiz"), duck: on("duck"), boss: on("quests"), cite: on("cite") }}
+                parts={{ feynman: on("feynman"), eli12: on("eli12"), quiz: on("quiz"), duck: on("duck"), boss: on("quests"), cite: on("cite"), critique: on("critique") }}
                 onHideDuck={async () => {
                   try {
                     setFeatures(await api.setFeatures({ duck: false }));
@@ -264,7 +264,7 @@ export default function App() {
           )}
           {page === "today" && <Today papers={papers} onAction={goAction} gameOn={on("game")} reviewOn={on("review")} questsOn={on("quests") && on("game")} onOpenReview={() => setTab("review")} notify={setNotice} />}
           {page === "review" && <Review notify={setNotice} />}
-          {page === "write" && <Write notify={setNotice} onChanged={() => {}} />}
+          {page === "write" && <Write notify={setNotice} onChanged={() => {}} gapsOn={on("gaps")} coachOn={on("coach")} />}
           {page === "journey" && <Journey notify={setNotice} avatarOn={on("avatar")} playOn={on("play")} mapOn={on("map")} gameOn={on("game")} questsOn={on("quests") && on("game")} onGo={(target) => setTab(hidden[target] ? "cards" : target)} />}
           {page === "glossary" && <Glossary reloadKey={glossKey} notify={setNotice} />}
           {tab === "search" && <Search onOpenCard={openPaper} notify={setNotice} />}

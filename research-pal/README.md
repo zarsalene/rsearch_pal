@@ -189,6 +189,23 @@ On the Journey page, open **Duck Island**. It is a small game. It is only for fu
 - **No guilt:** no timer, no lives, nothing is lost. You can stop a round at any time. If the coins of today are full, you can still play for fun.
 - You can switch the feature off in **Settings → Features**.
 
+## Gap finder, writing coach and quality check
+
+**Gaps** (Write tab → Gaps). Choose a sub-question. The AI compares the papers that you tagged to it. It makes three lists.
+- **Agree** and **Disagree**: each point has checked quotes from two papers at least. The server checks each quote in the PDF text. A point without them is dropped.
+- **Gap**: what nobody did yet. This is an **AI opinion**, with a reason. You choose: **This is a gap** or **Not a gap**. A gap that you confirm counts for the level Connector.
+- **Use this gap** adds a heading to your outline. You write the text.
+
+**Coach** (Write tab, button **Coach**). The coach reads one section. It gives comments at the side of the text, with the sentence that it means. It checks four points:
+- **Sourced:** each citation must match a paper of your library. The page must exist, and a quote must be on its page. A sentence with a number or a result and no citation is marked.
+- **Style:** a long sentence, filler words, the passive voice, contractions and semicolons. No AI is used for this part.
+- **Clear** and **Logical:** an AI opinion. The AI gives a short note or a question.
+- The coach **never rewrites** your text. The server refuses a comment that contains new text for you to copy.
+
+**Quality check** (Card tab → Quality). A checklist for critical reading: question, method, sample, bias, support of the claims, and reproducibility. The AI answers Yes, No or Unclear and gives one quote. If the server cannot find the quote in the PDF, the answer becomes **Unclear**. You can change each answer, add a note and confirm the check. Ten checks give the skill for the level Critic.
+
+You can switch each part off in **Settings → Features**: **Gap finder**, **Writing coach**, **Quality check of a paper**.
+
 ## Citations and the literature review builder
 
 **Metadata.** On a card, the block **Metadata** shows the authors, the year, the venue and the DOI of the paper. Click **Fill from the PDF**.
@@ -322,7 +339,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **3D avatar** and **Duck Island**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **Gap finder**, **Writing coach**, **Quality check**, **3D avatar** and **Duck Island**.
 
 ## Later (your list)
 

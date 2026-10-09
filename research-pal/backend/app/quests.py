@@ -179,7 +179,9 @@ def progress(q: dict, start: dt.date, end: dt.date) -> tuple[int, int]:
     if t in ("lit_sections", "gap_written", "pack_sent"):  # the features of later sprints. 0 until their tables exist
         if t == "lit_sections":
             return db.sections_written(300), need
-        return _count_table({"gap_written": "gap_notes", "pack_sent": "packs_sent"}[t]), need
+        if t == "gap_written":
+            return db.gaps_confirmed(), need
+        return _count_table("packs_sent"), need
     return 0, need
 
 

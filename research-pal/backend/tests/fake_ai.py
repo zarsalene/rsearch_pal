@@ -15,6 +15,26 @@ def default_answers(messages, max_tokens=None):
         return {"finer": {k: rate(k) for k in ("feasible", "interesting", "novel", "ethical", "relevant")},
                 "scope": {"status": "too_wide" if vague else "ok", "why": "The question covers a whole field." if vague else "The scope is good."},
                 "versions": ["Can deep learning find lung cancer in X-ray images?", "Does AI cut the time of a diagnosis in a hospital?", "How do nurses use AI tools in a clinic?"]}
+    if "You compare papers for a PhD student" in system:  # the gap finder
+        auto = 1 if "Paper 1: AUTOMA" in user else 2
+        a, b = {"paper": auto, "quote": "Our system uses a hypothesis agent and a validation agent.", "page": 2}, {"paper": 3 - auto, "quote": "We boil the pasta for nine minutes and stir the tomato sauce", "page": 2}
+        false = {"paper": 3 - auto, "quote": "The pasta must cook for two hours in cold milk.", "page": 2}
+        return {"agree": [{"point": "Both papers describe a method.", "evidence": [a, b]}, {"point": "Both papers use the same data.", "evidence": [a, false]}],
+                "disagree": [{"point": "The papers have different goals.", "evidence": [a, false]}],
+                "gap": [{"point": "Nobody tested the systems on encrypted traffic.", "reason": "Both papers use only one dataset."}]}
+    if "You give feedback on one paragraph" in system:  # the writing coach
+        return {"comments": [{"sentence": 1, "kind": "clear", "comment": "What does the word many mean here?"},
+                             {"sentence": 2, "kind": "logical", "comment": "Here is a better version: \"The system reads the logs and then it sends each log to the second agent for a check today.\""},
+                             {"sentence": 3, "kind": "logical", "comment": "Does this follow from the first sentence?"}]}
+    if "You help a PhD student to judge the quality of ONE paper" in system:  # the quality check
+        q = lambda text, page: {"quote": text, "page": page}
+        return {"items": [
+            {"key": "question", "answer": "yes", "comment": "The aim is clear.", **q("We present AUTOMA, a multi agent system for cyber threat hunting.", 1)},
+            {"key": "method", "answer": "yes", "comment": "The method fits the aim.", **q("Our system uses a hypothesis agent and a validation agent.", 2)},
+            {"key": "sample", "answer": "no", "comment": "The sample is small.", **q("The authors tested on thousands of hospital patients every day.", 3)},  # a false quote
+            {"key": "bias", "answer": "unclear", "comment": "The text does not say."},
+            {"key": "support", "answer": "yes", "comment": "The numbers support the claim.", **q("AUTOMA reaches a precision of 91.4 percent and a recall of 84.2 percent.", 3)},
+            {"key": "reproduce", "answer": "no", "comment": "There is one dataset only.", **q("We test only on one dataset.", 3)}]}
     if "You read the first page of a research paper" in system:  # the metadata
         return {"authors": ["Jane Smith", "Li Wei"], "year": "2024", "venue": "Journal of Cyber Tests"}
     if "You check an explanation" in system or "to check an explanation of a paper" in system:  # the Feynman check
