@@ -7,6 +7,7 @@ from . import db
 # name -> label, description, default. Add one entry for each new feature.
 REGISTRY: dict[str, dict] = {
     "chat": {"label": "Chat", "description": "Ask questions about your papers. Each answer shows its quotes.", "default": True},
+    "direction": {"label": "Thesis direction", "description": "Thesis title bar, question helper, sub-questions and paper tags.", "default": True},
     "simple": {"label": "Simple mode", "description": "A switch in the top bar. In Simple mode, the AI texts have shorter sentences and explain the hard terms.", "default": True},
     "feynman": {"label": "Explain it to me", "description": "Write the main idea of a paper in your own words. The AI shows what is right, partly right or wrong, with quotes.", "default": True},
     "eli12": {"label": "Like I am 12", "description": "A simple text, an example and an analogy for one field of a card.", "default": True},

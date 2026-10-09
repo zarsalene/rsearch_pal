@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, cardApi } from "./api.js";
 import { Icon } from "./icons.jsx";
 import MindMap from "./MindMap.jsx";
+import TagChips from "./TagChips.jsx";
 import SimpleText from "./SimpleText.jsx";
 import Understand from "./Understand.jsx";
 
@@ -334,10 +335,12 @@ function CardTabs({ list, active, onPick, onAdd, canAdd }) {
   );
 }
 
-export default function CardView({ id, onChanged, onDeleted, notify, parts = { feynman: true, eli12: true, quiz: true } }) {
+// subQuestions: the sub-questions of the thesis (empty when the feature is off). tags: {card id: [sub-question ids]} of this paper.
+export default function CardView({ id, subQuestions = [], tags = {}, onChanged, onDeleted, notify, parts = { feynman: true, eli12: true, quiz: true } }) {
   const [view, setView] = useState("card"); // "card" or "understand"
   const understandOn = parts.feynman || parts.eli12 || parts.quiz;
   const [data, setData] = useState(null);
+  const [tagBusy, setTagBusy] = useState(false);
   const [purpose, setPurpose] = useState("");
   const [mapBusy, setMapBusy] = useState(false);
   const [fillBusy, setFillBusy] = useState(""); // the field that we search again, or "all"
@@ -383,6 +386,17 @@ export default function CardView({ id, onChanged, onDeleted, notify, parts = { f
     } catch (e) {
       notify(e.message);
       return false;
+    }
+  };
+  const tag = async (ids) => {
+    setTagBusy(true);
+    try {
+      await api.setTags(id, cid, ids);
+      await onChanged(); // the list of papers carries the tags
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setTagBusy(false);
     }
   };
   const save = async (name, text) => {
@@ -469,6 +483,12 @@ export default function CardView({ id, onChanged, onDeleted, notify, parts = { f
                 {k}
               </span>
             ))}
+          </div>
+        )}
+        {subQuestions.length > 0 && (
+          <div className="cardtags">
+            <span className="eyebrow">Helps these sub-questions</span>
+            <TagChips subQuestions={subQuestions} selected={tags[cid] || []} onChange={tag} busy={tagBusy} label="Sub-questions of this card" />
           </div>
         )}
       </header>

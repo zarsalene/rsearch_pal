@@ -131,6 +131,38 @@ function FeatureSwitches({ features, onFeatures, notify }) {
   );
 }
 
+// The stage of the PhD. The student chooses it. The server keeps it.
+function StageChoice({ project, onProject, notify }) {
+  const [busy, setBusy] = useState(false);
+  if (!project) return null;
+  const change = async (stage) => {
+    setBusy(true);
+    try {
+      onProject(await api.saveProject({ stage }));
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="group">
+      <h2>PhD stage</h2>
+      <p className="muted">Choose where you are in your PhD. The app will use it to give advice that fits your stage.</p>
+      <div className="inwrap">
+        <label htmlFor="stage">Stage</label>
+        <select id="stage" value={project.stage} disabled={busy} onChange={(e) => change(e.target.value)}>
+          {project.stages.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 // Each answer of the AI is written in a log. The log has no text of your papers. It says which feature, which paper and which model.
 function AiUse({ notify }) {
   const [log, setLog] = useState(null);
@@ -157,7 +189,7 @@ function AiUse({ notify }) {
   );
 }
 
-export default function Settings({ config, features, onConfig, onFeatures, onImported, onLogout, notify }) {
+export default function Settings({ config, project, features, onConfig, onProject, onFeatures, onImported, onLogout, notify }) {
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
   useEffect(() => setQ(config?.thesis_question || ""), [config]);
@@ -166,6 +198,7 @@ export default function Settings({ config, features, onConfig, onFeatures, onImp
     try {
       await api.saveSettings(q);
       onConfig({ ...config, thesis_question: q });
+      if (onProject) onProject(await api.project()); // the title bar shows the same question
       setMsg("Saved.");
     } catch (e) {
       notify(e.message);
@@ -210,6 +243,8 @@ export default function Settings({ config, features, onConfig, onFeatures, onImp
           {msg && <span className="muted small">{msg}</span>}
         </div>
       </div>
+
+      <StageChoice project={project} onProject={onProject} notify={notify} />
 
       <div className="group">
         <h2>Backup</h2>

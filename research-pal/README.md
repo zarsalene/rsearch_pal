@@ -40,6 +40,20 @@ Write a topic (example: "the validation agent") when you add a paper, or on the 
 Open a paper, then click **New card** in the tabs above the card. Write a focus topic (example: "the dataset"). The server makes a second card from the text it already saved. There is no new upload.
 Each card has its own focus, quotes, edits and mind map. A paper can have 13 cards at most. Search, links and the chat still use the first card of each paper.
 
+## Thesis title and question helper
+
+- **Title bar:** a thin bar under the top bar shows your thesis title and main question. Click it to edit. On a small screen it shows the title only.
+- **Thesis tab:** the question helper has four steps.
+  1. Write your question.
+  2. Read the FINER check: Feasible, Interesting, Novel, Ethical, Relevant. The AI also says if the question is too wide or too vague.
+  3. Choose one of 3 narrower versions, or keep your own. Edit the text, then save.
+  4. Make 3 to 5 sub-questions. Write them yourself, or ask for AI suggestions and add the ones you like.
+- **The AI only suggests.** It saves nothing. Each AI text has a label: **AI suggestion** or **AI opinion**. If your question is good, the helper says so and does not force a change.
+- **History:** each change of the title or the question is kept. The Thesis tab shows them in a timeline.
+- **Tags and coverage:** on a card page, click the chips SQ1, SQ2 ... to link the card to sub-questions. The library has the same chips for the selected paper. The Thesis tab shows how many papers help each sub-question: no paper, one paper (orange), two papers or more (green).
+- **PhD stage:** Settings → PhD stage (Year 1, Year 2-3, Final year).
+- **Backup:** the backup file now holds the title, the question, the stage, the sub-questions and the tags. A restore fills only empty fields. It never replaces what you wrote.
+- **Switch:** Settings → Features → Thesis direction. When it is off, the bar, the tab, the chips and the calls of the server go away. Your data stays. The question stays in Settings → Your research question.
 ## Simple mode
 
 The switch **Expert / Simple** is in the top bar. The browser remembers your choice.
@@ -184,6 +198,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has two entries: **Chat** and **Thesis direction**.
 Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me** and **Word helper and glossary**.
 
 ## Later (your list)
