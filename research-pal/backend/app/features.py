@@ -7,6 +7,7 @@ from . import db
 # name -> label, description, default. Add one entry for each new feature.
 REGISTRY: dict[str, dict] = {
     "chat": {"label": "Chat", "description": "Ask questions about your papers. Each answer shows its quotes.", "default": True},
+    "direction": {"label": "Thesis direction", "description": "Thesis title bar, question helper, sub-questions and paper tags.", "default": True},
 }
 
 

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, vectors
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, project, vectors
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -44,7 +44,7 @@ def process_paper(pid: str, fresh: bool = False) -> None:
                 db.save_pages(pid, pages)
             chunks = pdf.chunk_pages(pages)
             vectors.index_chunks(pid, [c for c in chunks if not c["refs"]])
-            card = cards.generate(pid, pages, chunks, p["purpose"], db.get_setting("thesis_question"), meta, p.get("focus") or "")
+            card = cards.generate(pid, pages, chunks, p["purpose"], db.thesis_question(), meta, p.get("focus") or "")
             old = db.get_card(pid)
             for keep in ("notes", "mindmap"):  # notes and the mind map are not part of the reading. A new reading must keep them.
                 if old and old.get(keep):
@@ -100,7 +100,7 @@ def process_extra(pid: str, cid: str, fresh: bool = False) -> None:
             if not pages:
                 raise pdf.PdfError("The text of this paper is not on the server. Use Read again on the first card.")
             chunks = pdf.chunk_pages(pages)
-            card = cards.generate(pid, pages, chunks, x["purpose"], db.get_setting("thesis_question"), "", x["focus"])
+            card = cards.generate(pid, pages, chunks, x["purpose"], db.thesis_question(), "", x["focus"])
             for keep in ("mindmap",):  # a new reading keeps the mind map of this card
                 if x["card"] and x["card"].get(keep):
                     card[keep] = x["card"][keep]
@@ -157,7 +157,7 @@ def get_config():
         "ai_choice": llm.choice(), "ai_options": llm.options(),
         "saved_answers": db.cache_count(),
         "embeddings": config.EMBEDDING_BACKEND, "link_threshold": config.LINK_THRESHOLD,
-        "thesis_question": db.get_setting("thesis_question"), "max_upload_mb": config.MAX_UPLOAD_BYTES // (1024 * 1024),
+        "thesis_question": db.thesis_question(), "max_upload_mb": config.MAX_UPLOAD_BYTES // (1024 * 1024),
     }
 
 
@@ -167,8 +167,152 @@ class SettingsIn(BaseModel):
 
 @app.put("/api/settings", dependencies=[Depends(auth.require_auth)])
 def put_settings(body: SettingsIn):
-    db.set_setting("thesis_question", body.thesis_question.strip()[:500])
+    """The research question is part of the thesis project now. This call stays for old clients."""
+    db.save_project({"question": " ".join(body.thesis_question.split())[:project.MAX_QUESTION]})
     return {"ok": True}
+
+
+# ---------- thesis: title, question, stage, sub-questions, tags ----------
+def project_view() -> dict:
+    return {**db.get_project(), "stages": [{"value": k, "label": v} for k, v in db.STAGES.items()]}
+
+
+class ProjectIn(BaseModel):
+    title: str | None = None  # a field that you leave out keeps its saved value
+    question: str | None = None
+    stage: str | None = None
+
+
+@app.get("/api/project", dependencies=[Depends(auth.require_auth)])
+def get_project():
+    return project_view()
+
+
+@app.put("/api/project", dependencies=[Depends(auth.require_auth)])
+def put_project(body: ProjectIn):
+    changes = {}
+    if body.title is not None:
+        changes["title"] = " ".join(body.title.split())
+        if len(changes["title"]) > project.MAX_TITLE:
+            raise HTTPException(400, f"The title is longer than {project.MAX_TITLE} characters.")
+    if body.question is not None:
+        changes["question"] = " ".join(body.question.split())
+        if len(changes["question"]) > project.MAX_QUESTION:
+            raise HTTPException(400, f"The question is longer than {project.MAX_QUESTION} characters.")
+    if body.stage is not None:
+        if body.stage not in db.STAGES:
+            raise HTTPException(400, "Unknown PhD stage.")
+        changes["stage"] = body.stage
+    db.save_project(changes)
+    return project_view()
+
+
+direction = [Depends(auth.require_auth), Depends(features.require("direction"))]
+
+
+@app.get("/api/project/history", dependencies=direction)
+def project_history():
+    return db.project_history()
+
+
+class QuestionIn(BaseModel):
+    question: str = ""
+
+
+@app.post("/api/project/question-check", dependencies=direction)
+def question_check(body: QuestionIn):
+    """The FINER check and 3 narrower versions. The AI saves nothing: the student chooses."""
+    try:
+        return project.question_check(body.question)
+    except project.ProjectError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+class SplitIn(BaseModel):
+    question: str | None = None  # without it, the saved question is used
+
+
+@app.post("/api/project/split", dependencies=direction)
+def project_split(body: SplitIn):
+    """3 to 5 sub-questions for the main question. The AI saves nothing."""
+    try:
+        return project.split(db.thesis_question() if body.question is None else body.question)
+    except project.ProjectError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/project/coverage", dependencies=direction)
+def project_coverage():
+    cov = db.coverage()
+    for s in cov["sub_questions"]:
+        s["level"] = project.coverage_level(s["papers"])
+    return cov
+
+
+class SubQuestionIn(BaseModel):
+    text: str
+
+
+class SubQuestionPatch(BaseModel):
+    text: str | None = None
+    position: int | None = None  # the new place in the list, 0 = first
+
+
+@app.get("/api/sub-questions", dependencies=direction)
+def list_sub_questions():
+    return db.list_sub_questions()
+
+
+@app.post("/api/sub-questions", dependencies=direction)
+def add_sub_question(body: SubQuestionIn):
+    try:
+        text = project.clean_text(body.text, project.MAX_SUB_TEXT, "sub-question")
+    except project.ProjectError as e:
+        raise HTTPException(400, str(e))
+    if len(db.list_sub_questions()) >= db.MAX_SUB_QUESTIONS:
+        raise HTTPException(400, f"A thesis can have {db.MAX_SUB_QUESTIONS} sub-questions at most.")
+    return db.add_sub_question(text)
+
+
+@app.put("/api/sub-questions/{sid}", dependencies=direction)
+def put_sub_question(sid: str, body: SubQuestionPatch):
+    try:
+        text = None if body.text is None else project.clean_text(body.text, project.MAX_SUB_TEXT, "sub-question")
+    except project.ProjectError as e:
+        raise HTTPException(400, str(e))
+    sub = db.update_sub_question(sid, text, body.position)
+    if not sub:
+        raise HTTPException(404, "Sub-question not found.")
+    return sub
+
+
+@app.delete("/api/sub-questions/{sid}", dependencies=direction)
+def delete_sub_question(sid: str):
+    if not db.delete_sub_question(sid):
+        raise HTTPException(404, "Sub-question not found.")
+    return {"ok": True}
+
+
+class TagsIn(BaseModel):
+    sub_question_ids: list[str] = []
+    card_id: str = ""  # "" = the first card of the paper
+
+
+@app.put("/api/papers/{pid}/tags", dependencies=direction)
+def put_tags(pid: str, body: TagsIn):
+    """Link a card of the paper to sub-questions. The new list replaces the old list."""
+    must_get(pid)
+    if body.card_id and not db.get_extra(pid, body.card_id):
+        raise HTTPException(404, "Card not found.")
+    known = {s["id"] for s in db.list_sub_questions()}
+    if any(s not in known for s in body.sub_question_ids):
+        raise HTTPException(400, "Unknown sub-question.")
+    db.set_tags(pid, body.card_id, body.sub_question_ids)
+    return {"tags": db.all_tags().get(pid, {})}
 
 
 class AiChoiceIn(BaseModel):
@@ -251,7 +395,8 @@ async def upload(background: BackgroundTasks, file: UploadFile = File(...), purp
 
 @app.get("/api/papers", dependencies=[Depends(auth.require_auth)])
 def list_papers():
-    return [paper_view(p) for p in db.list_papers()]
+    tags = db.all_tags()  # {card id: [sub-question ids]} for each paper. The first card has the id "".
+    return [{**paper_view(p), "tags": tags.get(p["id"], {})} for p in db.list_papers()]
 
 
 @app.get("/api/papers/{pid}", dependencies=[Depends(auth.require_auth)])
@@ -614,13 +759,40 @@ def graph():
 
 @app.get("/api/export", dependencies=[Depends(auth.require_auth)])
 def export():
-    papers = []
+    papers, tags = [], db.all_tags()
     for p in db.list_papers():
         d = {k: p[k] for k in ("id", "filename", "title", "purpose", "focus", "n_pages", "created_at")}
         d["pages"], d["card"] = db.get_pages(p["id"]), db.get_card(p["id"])
         d["extra_cards"] = [{"id": x["id"], "focus": x["focus"], "purpose": x["purpose"], "card": x["card"]} for x in db.list_extra(p["id"]) if x["card"]]
+        d["tags"] = tags.get(p["id"], {})
         papers.append(d)
-    return {"version": 1, "thesis_question": db.get_setting("thesis_question"), "papers": papers}
+    proj = db.get_project()
+    return {"version": 1, "thesis_question": proj["question"], "papers": papers,
+            "project": {"title": proj["title"], "question": proj["question"], "stage": proj["stage"], "sub_questions": db.list_sub_questions()}}
+
+
+def restore_project(data: dict) -> None:
+    """A restore fills only what is empty. It never replaces what the student has written. It writes no history."""
+    saved, old = db.get_project(), data.get("project") if isinstance(data.get("project"), dict) else {}
+    want = {"title": str(old.get("title") or "")[:project.MAX_TITLE], "stage": str(old.get("stage") or ""),
+            "question": str(old.get("question") or data.get("thesis_question") or "")[:project.MAX_QUESTION]}
+    if want["stage"] not in db.STAGES:
+        want["stage"] = ""
+    db.save_project({k: v for k, v in want.items() if v and not saved[k]}, record=False)
+    if not db.list_sub_questions():
+        for s in (old.get("sub_questions") or [])[:db.MAX_SUB_QUESTIONS]:
+            sid = str((s or {}).get("id", ""))
+            text = " ".join(str((s or {}).get("text", "")).split())[:project.MAX_SUB_TEXT]
+            if sid.isalnum() and len(sid) <= 32 and text:
+                db.add_sub_question(text, sid)
+
+
+def restore_tags(pid: str, tags) -> None:
+    """Tags of a restored paper. A tag of a sub-question that does not exist is dropped."""
+    known = {s["id"] for s in db.list_sub_questions()}
+    for cid, ids in (tags if isinstance(tags, dict) else {}).items():
+        if isinstance(ids, list) and (not cid or cid in {x["id"] for x in db.list_extra(pid)}):
+            db.set_tags(pid, str(cid), [s for s in ids if s in known])
 
 
 @app.post("/api/import", dependencies=[Depends(auth.require_auth)])
@@ -628,8 +800,7 @@ def import_backup(data: dict, background: BackgroundTasks):
     if data.get("version") != 1 or not isinstance(data.get("papers"), list):
         raise HTTPException(400, "This is not a Research_Pal backup file.")
     added = 0
-    if data.get("thesis_question") and not db.get_setting("thesis_question"):
-        db.set_setting("thesis_question", str(data["thesis_question"])[:500])
+    restore_project(data)
     for d in data["papers"]:
         pid = str(d.get("id", ""))
         if not pid.isalnum() or len(pid) > 32 or db.get_paper(pid):
@@ -646,6 +817,7 @@ def import_backup(data: dict, background: BackgroundTasks):
                     db.add_extra(pid, str(x.get("focus") or "")[:200], str(x.get("purpose") or "")[:500], xid, x["card"])
                 except sqlite3.IntegrityError:
                     pass  # this card id exists already
+        restore_tags(pid, d.get("tags"))
         background.add_task(reindex_paper, pid)
         added += 1
     return {"added": added}
