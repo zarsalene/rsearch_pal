@@ -41,7 +41,7 @@ npm run e2e          5 passed (1.4m)
 - **I broke the number check on purpose** (`_facts_kept` in `ste.py`). Three truth tests failed. I restored the file.
 - **Saved answers:** the second `/simplify` request makes no call to the provider (test with `http_ai`).
 - **AI log:** one row for each call, the right feature names (`card`, `chat`, `link`, `simplify`, `define`), no row for a saved answer.
-- **CI:** see section 6.
+- **CI:** the run of the branch passed: https://github.com/zarsalene/rsearch_pal/actions/runs/37946187799
 
 ## 4. Smoke test (real AI)
 
