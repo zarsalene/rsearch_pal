@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./api.js", () => ({ api: { toRead: vi.fn(), setToRead: vi.fn(), readToRead: vi.fn(), uploadToRead: vi.fn() } }));
+vi.mock("./api.js", () => ({ api: { toRead: vi.fn(), setToRead: vi.fn(), readToRead: vi.fn(), uploadToRead: vi.fn(), refreshSuggestions: vi.fn() } }));
 import { api } from "./api.js";
 import ToRead from "./ToRead.jsx";
 
@@ -47,5 +47,15 @@ describe("To read", () => {
     await userEvent.click((await screen.findAllByRole("button", { name: "Not useful" }))[1]);
     expect(api.setToRead).toHaveBeenCalledWith("b", "not_useful");
     await waitFor(() => expect(api.toRead).toHaveBeenCalledTimes(2));
+  });
+  it("tags a suggestion and looks for new suggestions on request", async () => {
+    api.toRead.mockResolvedValue([{ ...ITEMS[0], source: "suggested", reason: "Cited by 4 of your papers" }]);
+    api.refreshSuggestions.mockResolvedValue({ added: 2, message: "2 new suggestions in your To read list." });
+    const notify = vi.fn();
+    render(<ToRead notify={notify} suggestOn />);
+    expect(await screen.findByText("Suggested")).toBeInTheDocument();
+    expect(screen.getByText("Cited by 4 of your papers")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Suggest papers now" }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith("2 new suggestions in your To read list."));
   });
 });

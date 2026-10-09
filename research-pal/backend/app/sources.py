@@ -111,6 +111,11 @@ def _abstract(inv) -> str:
     return " ".join(words[i] for i in sorted(words))
 
 
+def short_id(url: str | None) -> str:
+    """"https://openalex.org/W123" -> "W123"."""
+    return (url or "").rsplit("/", 1)[-1]
+
+
 def _from_openalex(w: dict) -> dict:
     loc = w.get("best_oa_location") or {}
     urls = [u for u in (loc.get("pdf_url"), (w.get("open_access") or {}).get("oa_url")) if u]
@@ -118,7 +123,7 @@ def _from_openalex(w: dict) -> dict:
     doi = re.sub(r"^https?://doi\.org/", "", w.get("doi") or "", flags=re.I).lower()
     return {"title": (w.get("title") or "").strip(), "authors": [(a.get("author") or {}).get("display_name", "") for a in w.get("authorships") or []],
             "year": str(w.get("publication_year") or ""), "venue": source, "doi": doi, "abstract": _abstract(w.get("abstract_inverted_index")),
-            "pdf_urls": urls, "source": "openalex"}
+            "pdf_urls": urls, "source": "openalex", "openalex_id": short_id(w.get("id")), "references": [short_id(r) for r in w.get("referenced_works") or []]}
 
 
 def openalex(doi: str = "", title: str = "") -> dict | None:
@@ -129,6 +134,27 @@ def openalex(doi: str = "", title: str = "") -> dict | None:
     r = _json("https://api.openalex.org/works", {**params, "search": title, "per-page": 1})
     results = (r or {}).get("results") or []
     return _from_openalex(results[0]) if results else None
+
+
+def openalex_cited_by(openalex_id: str, limit: int = 25) -> list[str]:
+    """The papers that cite this work (the ids)."""
+    params = {"filter": f"cites:{openalex_id}", "per-page": limit, "select": "id"}
+    if contact_email():
+        params["mailto"] = contact_email()
+    r = _json("https://api.openalex.org/works", params)
+    return [short_id(w.get("id")) for w in (r or {}).get("results") or []]
+
+
+def openalex_works(ids: list[str]) -> list[dict]:
+    """The metadata of some works, by id (at most 50)."""
+    ids = [i for i in ids if i][:50]
+    if not ids:
+        return []
+    params = {"filter": "openalex:" + "|".join(ids), "per-page": len(ids)}
+    if contact_email():
+        params["mailto"] = contact_email()
+    r = _json("https://api.openalex.org/works", params)
+    return [_from_openalex(w) for w in (r or {}).get("results") or []]
 
 
 def semantic_scholar(doi: str = "", title: str = "", arxiv: str = "") -> dict | None:

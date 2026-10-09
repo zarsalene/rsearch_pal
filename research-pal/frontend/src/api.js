@@ -90,6 +90,22 @@ export const api = {
   reviewGarden: (date, tz) => request(`/api/review/garden?date=${date}&tz=${tz}`),
   rateReview: (id, rating, date) => request(`/api/review/${id}`, { method: "POST", json: { rating, date } }),
   journeyMap: () => request("/api/journey/map"),
+  // Plan: timeline, weekly review, journal. Suggestions.
+  plan: () => request("/api/plan"),
+  makeDefaults: () => request("/api/milestones/defaults", { method: "POST" }),
+  addMilestone: (title, due) => request("/api/milestones", { method: "POST", json: { title, due } }),
+  editMilestone: (id, body) => request(`/api/milestones/${id}`, { method: "PUT", json: body }),
+  deleteMilestone: (id) => request(`/api/milestones/${id}`, { method: "DELETE" }),
+  splitMilestone: (id) => request(`/api/milestones/${id}/split`, { method: "POST" }),
+  addTask: (id, week, text) => request(`/api/milestones/${id}/tasks`, { method: "POST", json: { week, text } }),
+  editTask: (id, body) => request(`/api/tasks/${id}`, { method: "PUT", json: body }),
+  deleteTask: (id) => request(`/api/tasks/${id}`, { method: "DELETE" }),
+  weeklyReview: () => request("/api/weekly-review"),
+  saveReview: (body) => request("/api/weekly-review", { method: "PUT", json: body }),
+  journal: (kind = "") => request(`/api/journal${kind ? "?kind=" + kind : ""}`),
+  addJournal: (body) => request("/api/journal", { method: "POST", json: body }),
+  deleteJournal: (id) => request(`/api/journal/${id}`, { method: "DELETE" }),
+  refreshSuggestions: () => request("/api/suggestions/refresh", { method: "POST" }),
   // Find papers: add by DOI, link or title; import BibTeX or RIS; the To read list.
   fromId: (query, addToRead = false) => request("/api/papers/from-id", { method: "POST", json: { query, add_to_read: addToRead } }),
   uploadPdfFor: (id, file) => {

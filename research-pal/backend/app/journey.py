@@ -45,15 +45,15 @@ def literature_forest() -> dict:
 
 
 def method_workshop() -> dict:
-    n = _count("journal", "kind != 'experiment'")  # the research journal comes in a later sprint
-    return {"percent": _pct(min(n, 10) / 10), "target": "today", "first_step": "The research journal comes in a later sprint. Then you can write your methods here." if n == 0 else "Keep writing your decisions in the journal.",
-            "detail": f"{n} journal entries." if n else "Not available yet."}
+    n = _count("journal", "kind = 'decision'")  # the decisions of the research journal
+    return {"percent": _pct(min(n, 10) / 10), "target": "plan", "first_step": "Open the Plan tab. Write a decision in your journal: which method will you use, and why?" if n == 0 else "Keep writing your decisions in the journal.",
+            "detail": f"{n} {'decision' if n == 1 else 'decisions'} in the journal." if n else "No decision in the journal yet."}
 
 
 def data_mines() -> dict:
-    n = _count("journal", "kind = 'experiment'")
-    return {"percent": _pct(min(n, 10) / 10), "target": "today", "first_step": "The research journal comes in a later sprint. Then you can log your experiments here." if n == 0 else "Log your next experiment.",
-            "detail": f"{n} experiments." if n else "Not available yet."}
+    n = _count("journal", "kind IN ('experiment','result')")  # the experiments and the results of the research journal
+    return {"percent": _pct(min(n, 10) / 10), "target": "plan", "first_step": "Open the Plan tab. Log your first experiment or result in the journal." if n == 0 else "Log your next experiment or result.",
+            "detail": f"{n} {'entry' if n == 1 else 'entries'} (experiments and results)." if n else "No experiment or result in the journal yet."}
 
 
 def writing_coast() -> dict:

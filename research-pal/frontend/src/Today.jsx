@@ -3,6 +3,7 @@ import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
 import FocusTimer from "./FocusTimer.jsx";
 import { QuestBlock } from "./Quests.jsx";
+import { FridayReview } from "./Plan.jsx";
 import { tzMinutes } from "./game.js";
 
 // The date of the student, as YYYY-MM-DD. The server can be in another time zone.
@@ -144,7 +145,7 @@ function Wins({ data, date, onChanged, notify, inputRef }) {
 }
 
 // The home page. One main action is clear. The other blocks are calm and small.
-export default function Today({ papers, onAction, gameOn = false, reviewOn = false, questsOn = false, onOpenReview, notify }) {
+export default function Today({ papers, onAction, gameOn = false, reviewOn = false, questsOn = false, planOn = false, onOpenReview, notify }) {
   const [date] = useState(localDate);
   const [data, setData] = useState(null);
   const [game, setGame] = useState(null);
@@ -202,6 +203,7 @@ export default function Today({ papers, onAction, gameOn = false, reviewOn = fal
         )}
       </section>
 
+      {planOn && <FridayReview notify={notify} onSaved={load} />}
       {questsOn && <QuestBlock notify={notify} />}
 
       <div className="today-grid">

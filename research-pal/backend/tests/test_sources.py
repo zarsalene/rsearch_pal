@@ -2,7 +2,7 @@
 import httpx
 import pytest
 
-from app import bibimport, db, sources, triage
+from app import bibimport, db, sources, suggestions, triage
 from helpers import upload, wait_ready
 from recorded_sources import AUTOMA_DOI, BIB, RIS, many_bib, route
 
@@ -20,6 +20,7 @@ def fake_net(monkeypatch, sample_pdfs):
 
     monkeypatch.setattr(sources, "fetch", fetch)
     monkeypatch.setenv("CONTACT_EMAIL", "student@example.org")
+    monkeypatch.setattr(suggestions, "due", lambda: False)  # the daily suggestions of Sprint 11 have their own tests (test_plan.py)
     sources._cache.clear()
     return state
 
