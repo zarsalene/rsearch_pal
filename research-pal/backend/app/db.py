@@ -34,6 +34,8 @@ def init() -> None:
             CREATE TABLE IF NOT EXISTS extra_cards(
               id TEXT PRIMARY KEY, paper_id TEXT, focus TEXT, purpose TEXT, status TEXT, error TEXT,
               data TEXT, created_at REAL, updated_at REAL);
+            CREATE TABLE IF NOT EXISTS features(
+              name TEXT PRIMARY KEY, enabled INTEGER NOT NULL);
             """
         )
         c.execute("UPDATE extra_cards SET status='error', error='Processing stopped (server restart). Click Retry.' WHERE status IN ('processing','queued')")
@@ -203,6 +205,19 @@ def cache_clear() -> None:
     _ensure_cache_table()
     with conn() as c:
         c.execute("DELETE FROM llm_cache")
+
+
+# ---------- feature switches ----------
+def get_feature(name: str):
+    """True or False when the student chose. None when there is no choice yet (the feature uses its default)."""
+    with conn() as c:
+        r = c.execute("SELECT enabled FROM features WHERE name=?", (name,)).fetchone()
+    return None if r is None else bool(r["enabled"])
+
+
+def set_feature(name: str, enabled: bool) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO features(name,enabled) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled", (name, int(enabled)))
 
 
 def _ensure_settings_table() -> None:
