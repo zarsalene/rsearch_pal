@@ -22,6 +22,9 @@ USE_PG = MULTI_USER and bool(DATABASE_URL)  # Postgres on Supabase. Without it: 
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 FRONTEND_ORIGINS = [o.strip().rstrip("/") for o in os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").split(",") if o.strip()]
+# The phone app (Capacitor) sends one of these origins: https://localhost on Android, capacitor://localhost on iOS.
+# They are always allowed, so the phone app works without a change of FRONTEND_ORIGIN.
+FRONTEND_ORIGINS += [o for o in ("https://localhost", "capacitor://localhost", "http://localhost") if o not in FRONTEND_ORIGINS]
 TOKEN_TTL_SECONDS = 60 * 60 * 24 * 14  # 14 days
 
 MAX_UPLOAD_BYTES = int(os.getenv("MAX_UPLOAD_MB", "25")) * 1024 * 1024
