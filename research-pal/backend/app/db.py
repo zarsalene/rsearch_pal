@@ -1,5 +1,5 @@
 """SQLite storage: papers, page texts and cards."""
-import json, sqlite3, threading, time, uuid
+import json, re, sqlite3, threading, time, uuid
 from contextlib import contextmanager
 
 from . import config
@@ -82,6 +82,9 @@ def init() -> None:
               id TEXT PRIMARY KEY, code TEXT UNIQUE, earned_at REAL);
             CREATE TABLE IF NOT EXISTS rewards(
               id TEXT PRIMARY KEY, text TEXT, condition TEXT, earned_at REAL, claimed INTEGER DEFAULT 0, created_at REAL);
+            CREATE TABLE IF NOT EXISTS to_read(
+              id TEXT PRIMARY KEY, doi TEXT DEFAULT '', title TEXT, abstract TEXT DEFAULT '', authors_json TEXT DEFAULT '[]', year TEXT DEFAULT '',
+              venue TEXT DEFAULT '', score INTEGER DEFAULT 0, reason TEXT DEFAULT '', added_at REAL, status TEXT DEFAULT 'new', source TEXT DEFAULT '');
             CREATE TABLE IF NOT EXISTS play_rounds(
               id TEXT PRIMARY KEY, game TEXT, questions_json TEXT, created_at REAL, date TEXT, finished INTEGER DEFAULT 0, score INTEGER DEFAULT 0, coins INTEGER DEFAULT 0);
             CREATE TABLE IF NOT EXISTS play_items(
@@ -130,11 +133,11 @@ def new_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
-def add_paper(pid: str, filename: str, purpose: str, focus: str = "") -> None:
+def add_paper(pid: str, filename: str, purpose: str, focus: str = "", status: str = "queued", title: str = "") -> None:
     now = time.time()
     with conn() as c:
         c.execute("INSERT INTO papers(id,filename,title,status,error,purpose,focus,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                  (pid, filename, filename.rsplit(".", 1)[0], "queued", "", purpose, focus, now, now))
+                  (pid, filename, title or filename.rsplit(".", 1)[0], status, "", purpose, focus, now, now))
 
 
 def update_paper(pid: str, **fields) -> None:
@@ -1090,3 +1093,61 @@ def play_review_material() -> list[dict]:
     """Quiz questions and glossary words from the papers: the rows that have a quote."""
     with conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM review_items WHERE quote != '' AND kind IN ('quiz','glossary') ORDER BY created_at, id")]
+
+
+# ---------- Find papers (Sprint 10): the "To read" list and the check for a paper that is in the library already ----------
+def _norm_title(t: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (t or "").lower()).strip()
+
+
+def paper_exists(doi: str = "", title: str = ""):
+    """A paper of the library with the same DOI or the same title (letters and numbers only), or None."""
+    doi, nt = (doi or "").strip().lower(), _norm_title(title)
+    for p in list_papers():
+        if (doi and (p.get("doi") or "").strip().lower() == doi) or (nt and len(nt) > 10 and _norm_title(p.get("title")) == nt):
+            return p
+    return None
+
+
+def to_read_add(item: dict, rid: str | None = None, added_at: float | None = None) -> dict | None:
+    """None if the same DOI or title is in the list already."""
+    doi, nt = (item.get("doi") or "").lower(), _norm_title(item.get("title"))
+    with conn() as c:
+        for r in c.execute("SELECT * FROM to_read"):
+            if (doi and r["doi"] == doi) or (nt and _norm_title(r["title"]) == nt):
+                return None
+        rid = rid or new_id()
+        c.execute("INSERT INTO to_read(id,doi,title,abstract,authors_json,year,venue,score,reason,added_at,status,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (rid, doi, item["title"][:400], (item.get("abstract") or "")[:4000], json.dumps(item.get("authors") or [], ensure_ascii=False), str(item.get("year") or "")[:4],
+                   (item.get("venue") or "")[:200], int(item.get("score") or 0), item.get("reason") or "", added_at or now(), item.get("status") or "new", item.get("source") or ""))
+    return to_read_get(rid)
+
+
+def _to_read_row(r) -> dict:
+    d = dict(r)
+    d["authors"] = json.loads(d.pop("authors_json") or "[]")
+    return d
+
+
+def to_read_get(rid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM to_read WHERE id=?", (rid,)).fetchone()
+    return _to_read_row(r) if r else None
+
+
+def to_read_list(status: str | None = None) -> list[dict]:
+    with conn() as c:
+        rows = c.execute("SELECT * FROM to_read WHERE status=? ORDER BY score DESC, added_at", (status,)) if status else c.execute("SELECT * FROM to_read ORDER BY score DESC, added_at")
+        return [_to_read_row(r) for r in rows]
+
+
+def to_read_set(rid: str, **fields) -> None:
+    allowed = {k: v for k, v in fields.items() if k in ("status", "score", "reason")}
+    if allowed:
+        with conn() as c:
+            c.execute(f"UPDATE to_read SET {', '.join(k + '=?' for k in allowed)} WHERE id=?", (*allowed.values(), rid))
+
+
+def to_read_delete(rid: str) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM to_read WHERE id=?", (rid,))

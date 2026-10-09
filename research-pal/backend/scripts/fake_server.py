@@ -28,6 +28,16 @@ from pdfs import PAPERS, make_pdf
 
 llm.chat_json = FakeAI()  # every module calls llm.chat_json, so this one line replaces the AI
 
+# The free sources (OpenAlex, arXiv, Unpaywall): recorded answers, so the browser tests need no network.
+from app import sources
+import recorded_sources
+
+_pdf_file = Path(os.environ["DATA_DIR"]) / "source-test.pdf"
+make_pdf(_pdf_file, PAPERS["a.pdf"][1])
+_PDF_BYTES = _pdf_file.read_bytes()
+os.environ["CONTACT_EMAIL"] = "student@example.org"
+sources.fetch = lambda url, params=None: recorded_sources.route(url, params, _PDF_BYTES, True)
+
 if args.pdf_dir:
     out = Path(args.pdf_dir)
     out.mkdir(parents=True, exist_ok=True)

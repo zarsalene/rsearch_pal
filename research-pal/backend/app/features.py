@@ -25,6 +25,7 @@ REGISTRY: dict[str, dict] = {
     "critique": {"label": "Quality check of a paper", "description": "A checklist for critical reading. Each answer has a quote, and it is an AI opinion that you can change.", "default": True},
     "avatar": {"label": "3D avatar", "description": "A small 3D character on the Journey page. It shows your level. Each level adds one item. It never gets sad.", "default": True},
     "play": {"label": "Duck Island: a game to play", "description": "A small island. Walk with the Duck, play mini-games with quotes from your papers, win coins and buy items for the island. Play gives no points and no levels.", "default": True},
+    "findpapers": {"label": "Find papers: add by DOI, import, To read", "description": "Add a paper from a DOI, an arXiv link or a title. Import a BibTeX or RIS file (for example from Zotero). A To read list with a fit score for your question.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 
