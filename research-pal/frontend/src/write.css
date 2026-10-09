@@ -23,3 +23,20 @@
 .srcgroup h4{margin:12px 0 4px;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
 .srccard{margin-bottom:10px}
 .srccard blockquote{display:grid;gap:4px;margin:6px 0;padding:8px 10px;background:var(--surface-2);border-radius:var(--r-sm);font-size:.9rem}
+
+/* ---- Sprint 09: gaps, coach, quality ---- */
+.gapcols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px}
+@media (max-width:900px){.gapcols{grid-template-columns:1fr}}
+.gapcol{border:var(--edge);border-radius:var(--r-lg);padding:12px 14px;background:var(--surface)}
+.gappoint{margin:10px 0;padding-top:8px;border-top:var(--edge)}
+.gappoint.confirmed{border-left:3px solid var(--ok);padding-left:8px}
+.gappoint.not_gap{opacity:.6}
+.gappoint blockquote,.qquote{margin:6px 0;padding-left:10px;border-left:3px solid var(--line-strong);font-size:.92rem}
+.coachpanel{margin-top:12px;border:var(--edge);border-radius:var(--r-lg);padding:10px 14px;background:var(--surface)}
+.coachpanel ul{list-style:none;padding:0;margin:0}
+.ccomment{margin:8px 0;padding-left:8px;border-left:3px solid var(--line-strong)}
+.ccomment.sourced{border-color:var(--warn)}
+.ccomment.clear,.ccomment.logical{border-color:var(--accent)}
+.qitems{padding-left:1.2em;display:grid;gap:12px}
+.qitem.yes{border-left:3px solid var(--ok);padding-left:8px}
+.qitem.no{border-left:3px solid var(--warn);padding-left:8px}
