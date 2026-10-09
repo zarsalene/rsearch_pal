@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, cite, companion, game, journey, metadata, pdf, project, quests, review, ste, today, understand, vectors, words, writing
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, cite, coach, companion, critique, game, gaps, journey, metadata, pdf, project, quests, review, ste, today, understand, vectors, words, writing
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -1117,6 +1117,110 @@ def paper_cite(pid: str, page: int | None = None, style: str = "apa"):
     return cite.cite(p, page, style, number)
 
 
+# ---------- gap finder, writing coach, critical reading ----------
+GAPS = [Depends(auth.require_auth), Depends(features.require("gaps"))]
+
+
+class GapRunIn(BaseModel):
+    sub_question_id: str | None = None
+    paper_ids: list[str] | None = None
+
+
+@app.post("/api/gaps", dependencies=GAPS)
+def run_gaps(body: GapRunIn):
+    """Where the papers agree, where they disagree, and the gap. A point with no verified quotes in two papers is dropped. A gap is an AI opinion."""
+    try:
+        with llm.cache_scope(""), llm.ai_context("gaps", ",".join(body.paper_ids or [])):
+            return gaps.run(body.sub_question_id, body.paper_ids)
+    except gaps.GapError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/gaps", dependencies=GAPS)
+def get_gaps(sub_question_id: str = ""):
+    run = db.gap_run_latest(sub_question_id)
+    return gaps.view(run["id"]) if run else {"run_id": None, "agree": [], "disagree": [], "gap": []}
+
+
+class GapStatusIn(BaseModel):
+    status: str
+
+
+@app.put("/api/gaps/{gid}", dependencies=GAPS)
+def put_gap(gid: str, body: GapStatusIn):
+    try:
+        out = gaps.set_status(gid, body.status)
+    except gaps.GapError as e:
+        raise HTTPException(400, str(e))
+    game_event(game.refresh)  # a confirmed gap counts for the level Connector
+    return out
+
+
+@app.post("/api/gaps/{gid}/use", dependencies=GAPS)
+def use_gap(gid: str):
+    """"Use this gap": a new section in the outline of the literature review. The heading only. You write the text."""
+    g = db.gap_get(gid)
+    if not g:
+        raise HTTPException(404, "Gap not found.")
+    return db.review_section_add(db.review_doc()["id"], " ".join(g["text"].split())[:200], g["sub_question_id"] or "")
+
+
+COACH = [Depends(auth.require_auth), Depends(features.require("coach"))]
+
+
+class CoachIn(BaseModel):
+    text: str
+
+
+@app.post("/api/coach", dependencies=COACH)
+def run_coach(body: CoachIn):
+    """Feedback on a paragraph. It gives comments with a place in the text. It gives no rewritten text."""
+    try:
+        with llm.cache_scope(""), llm.ai_context("coach", ""):
+            return coach.review(body.text)
+    except coach.CoachError as e:
+        raise HTTPException(400, str(e))
+
+
+CRIT = [Depends(auth.require_auth), Depends(features.require("critique"))]
+
+
+@app.post("/api/papers/{pid}/critique", dependencies=CRIT)
+def run_critique(pid: str):
+    must_get(pid)
+    try:
+        with llm.cache_scope(pid), llm.ai_context("critique", pid):
+            return critique.run(pid)
+    except critique.CritiqueError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/papers/{pid}/critique", dependencies=CRIT)
+def get_critique(pid: str):
+    must_get(pid)
+    return critique.view(pid) or {"items": [], "label": critique.LABEL, "paper_id": pid}
+
+
+class CritiqueEditIn(BaseModel):
+    answers: dict = {}
+    confirm: bool = False
+
+
+@app.put("/api/papers/{pid}/critique", dependencies=CRIT)
+def edit_critique(pid: str, body: CritiqueEditIn):
+    must_get(pid)
+    try:
+        out = critique.edit(pid, body.answers, body.confirm)
+    except critique.CritiqueError as e:
+        raise HTTPException(400, str(e))
+    game_event(game.refresh)  # an edited or confirmed check counts for the level Critic
+    return out
+
+
 # ---------- literature review builder ----------
 def run_writing(fn, *args):
     try:
@@ -1449,6 +1553,9 @@ def export():
             "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
             "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
             "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")],
+            "gap_runs": [{k: r[k] for k in ("id", "sub_question_id", "paper_ids", "result", "created_at")} for r in db.gap_runs_all()],
+            "gaps": [{k: g[k] for k in ("id", "sub_question_id", "text", "reason", "status", "run_id", "created_at")} for g in db.gaps_list()],
+            "critiques": [{"paper_id": c["paper_id"], "data": c["data"], "edited": c["edited"], "confirmed": c["confirmed"], "created_at": c["created_at"]} for c in db.critiques_all()],
             "review_doc": {"title": db.review_doc()["title"], "sections": [{k: s[k] for k in ("id", "position", "heading", "sub_question_id", "text")} for s in db.review_sections(db.review_doc()["id"])]},
             "review_state": db.review_state_rows(), "quests_active": db.quests_all(), "activity": db.activity_list(),
             "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
@@ -1526,6 +1633,24 @@ def import_backup(data: dict, background: BackgroundTasks):
         try:
             if str(r["id"]).isalnum() and not db.review_get(str(r["id"])):
                 db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for r in data.get("gap_runs") or []:  # gaps and quality checks are part of the backup. A row that exists is skipped.
+        try:
+            if str(r["id"]).isalnum() and not db.gap_run_get(str(r["id"])) and isinstance(r.get("result"), dict):
+                db.gap_run_add(str(r.get("sub_question_id") or ""), [str(p) for p in r.get("paper_ids") or []], r["result"], str(r["id"]), float(r.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for g in data.get("gaps") or []:
+        try:
+            if str(g["id"]).isalnum() and not db.gap_get(str(g["id"])) and g.get("status") in gaps.STATUSES:
+                db.gap_add(str(g.get("sub_question_id") or ""), str(g["text"])[:400], str(g.get("reason") or "")[:400], str(g.get("run_id") or ""), str(g["id"]), g["status"], float(g.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for c in data.get("critiques") or []:
+        try:
+            if db.get_paper(str(c["paper_id"])) and not db.critique_get(str(c["paper_id"])) and isinstance(c.get("data"), dict):
+                db.critique_save(str(c["paper_id"]), c["data"], bool(c.get("edited")), bool(c.get("confirmed")), float(c.get("created_at") or 0) or None)
         except (KeyError, TypeError, ValueError):
             pass
     doc = data.get("review_doc") if isinstance(data.get("review_doc"), dict) else None

@@ -60,6 +60,12 @@ def init() -> None:
             CREATE TABLE IF NOT EXISTS focus_sessions(
               id TEXT PRIMARY KEY, start REAL, end REAL, minutes INTEGER DEFAULT 0, task_text TEXT, paper_id TEXT DEFAULT '',
               date TEXT, planned INTEGER DEFAULT 0, goal_id TEXT DEFAULT '');
+            CREATE TABLE IF NOT EXISTS gap_runs(
+              id TEXT PRIMARY KEY, sub_question_id TEXT, paper_ids TEXT, result_json TEXT, created_at REAL);
+            CREATE TABLE IF NOT EXISTS gaps(
+              id TEXT PRIMARY KEY, sub_question_id TEXT, text TEXT, reason TEXT, status TEXT DEFAULT 'new', created_at REAL, run_id TEXT DEFAULT '');
+            CREATE TABLE IF NOT EXISTS critiques(
+              paper_id TEXT PRIMARY KEY, json TEXT, edited INTEGER DEFAULT 0, confirmed INTEGER DEFAULT 0, created_at REAL);
             CREATE TABLE IF NOT EXISTS review_doc(
               id TEXT PRIMARY KEY, title TEXT, updated_at REAL);
             CREATE TABLE IF NOT EXISTS review_sections(
@@ -190,6 +196,7 @@ def delete_paper(pid: str) -> None:
         c.execute("DELETE FROM llm_cache WHERE tag=?", (pid,))  # saved AI answers of this paper
         c.execute("DELETE FROM extra_cards WHERE paper_id=?", (pid,))
         c.execute("DELETE FROM explanations WHERE paper_id=?", (pid,))
+        c.execute("DELETE FROM critiques WHERE paper_id=?", (pid,))
         c.execute("DELETE FROM review_items WHERE paper_id=? AND kind IN ('quiz','idea')", (pid,))  # the words of the glossary stay
 
 
@@ -386,6 +393,87 @@ def coverage() -> dict:
         total = c.execute("SELECT COUNT(*) AS n FROM papers").fetchone()["n"]
         tagged = c.execute("SELECT COUNT(DISTINCT paper_id) AS n FROM paper_tags").fetchone()["n"]
     return {"sub_questions": [dict(r) for r in rows], "papers": total, "untagged": total - tagged}
+# ---------- gaps, gap runs, critical reading checks (Sprint 09) ----------
+def gap_run_add(sub_question_id: str, paper_ids: list[str], result: dict, rid: str | None = None, created_at: float | None = None) -> str:
+    rid = rid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO gap_runs(id,sub_question_id,paper_ids,result_json,created_at) VALUES(?,?,?,?,?)",
+                  (rid, sub_question_id, json.dumps(paper_ids), json.dumps(result, ensure_ascii=False), created_at or now()))
+    return rid
+
+
+def gap_run_get(rid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM gap_runs WHERE id=?", (rid,)).fetchone()
+    return {**dict(r), "paper_ids": json.loads(r["paper_ids"]), "result": json.loads(r["result_json"])} if r else None
+
+
+def gap_run_latest(sub_question_id: str):
+    with conn() as c:
+        r = c.execute("SELECT id FROM gap_runs WHERE sub_question_id=? ORDER BY created_at DESC, rowid DESC LIMIT 1", (sub_question_id,)).fetchone()
+    return gap_run_get(r["id"]) if r else None
+
+
+def gap_runs_all() -> list[dict]:
+    with conn() as c:
+        ids = [r["id"] for r in c.execute("SELECT id FROM gap_runs ORDER BY created_at")]
+    return [gap_run_get(i) for i in ids]  # outside the lock: the lock is not reentrant
+
+
+def gap_add(sub_question_id: str, text: str, reason: str, run_id: str, gid: str | None = None, status: str = "new", created_at: float | None = None) -> dict:
+    gid = gid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO gaps(id,sub_question_id,text,reason,status,created_at,run_id) VALUES(?,?,?,?,?,?,?)", (gid, sub_question_id, text, reason, status, created_at or now(), run_id))
+    return gap_get(gid)
+
+
+def gap_get(gid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM gaps WHERE id=?", (gid,)).fetchone()
+    return dict(r) if r else None
+
+
+def gaps_list(run_id: str | None = None) -> list[dict]:
+    with conn() as c:
+        if run_id:
+            return [dict(r) for r in c.execute("SELECT * FROM gaps WHERE run_id=? ORDER BY rowid", (run_id,))]
+        return [dict(r) for r in c.execute("SELECT * FROM gaps ORDER BY created_at, rowid")]
+
+
+def gap_set_status(gid: str, status: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE gaps SET status=? WHERE id=?", (status, gid))
+
+
+def gaps_confirmed() -> int:
+    with conn() as c:
+        return c.execute("SELECT COUNT(*) AS n FROM gaps WHERE status='confirmed'").fetchone()["n"]
+
+
+def critique_save(pid: str, data: dict, edited: bool, confirmed: bool, created_at: float | None = None) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO critiques(paper_id,json,edited,confirmed,created_at) VALUES(?,?,?,?,?) ON CONFLICT(paper_id) DO UPDATE SET json=excluded.json, edited=excluded.edited, "
+                  "confirmed=excluded.confirmed, created_at=COALESCE(?, critiques.created_at)", (pid, json.dumps(data, ensure_ascii=False), int(edited), int(confirmed), created_at or now(), created_at))
+
+
+def critique_get(pid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM critiques WHERE paper_id=?", (pid,)).fetchone()
+    return {"paper_id": pid, "data": json.loads(r["json"]), "edited": bool(r["edited"]), "confirmed": bool(r["confirmed"]), "created_at": r["created_at"]} if r else None
+
+
+def critiques_all() -> list[dict]:
+    with conn() as c:
+        ids = [r["paper_id"] for r in c.execute("SELECT paper_id FROM critiques")]
+    return [critique_get(i) for i in ids]  # outside the lock: the lock is not reentrant
+
+
+def critiques_done() -> int:
+    """Checks that the student edited or confirmed. They count for the level Critic."""
+    with conn() as c:
+        return c.execute("SELECT COUNT(*) AS n FROM critiques WHERE edited=1 OR confirmed=1").fetchone()["n"]
+
+
 # ---------- literature review: one document, sections, the words of each day (Sprint 08) ----------
 def review_doc() -> dict:
     with conn() as c:

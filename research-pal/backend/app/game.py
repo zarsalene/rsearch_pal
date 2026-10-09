@@ -126,7 +126,7 @@ def counts() -> dict:
     """What the student has done. None means: the feature does not exist yet."""
     c = db.xp_counts()
     return {"cards": c.get("card_ready", 0), "feynman": c.get("feynman_pass", 0), "links": c.get("link_explained", 0),
-            "critical": None, "gaps": None, "sections": db.sections_written(300), "outline": None}
+            "critical": db.critiques_done(), "gaps": db.gaps_confirmed(), "sections": db.sections_written(300), "outline": None}
 
 
 def level_info(xp: int, have: dict) -> dict:

@@ -173,7 +173,7 @@ def test_a_level_needs_xp_and_the_skill(client):
     assert game.level_info(5000, {"cards": 5, "feynman": 2, "links": 0, "critical": None, "gaps": None, "sections": None, "outline": None})["name"] == "Explorer"
     info = game.level_info(5000, game.counts())
     assert info["name"] == "Reader" and info["next"]["name"] == "Critic"
-    assert info["next"]["conditions"] == [{"text": "critical reading checks", "have": 0, "need": 10, "available": False}]  # the feature does not exist yet
+    assert info["next"]["conditions"] == [{"text": "critical reading checks", "have": 0, "need": 10, "available": True}]  # the quality check exists now (Sprint 09)
 
 
 def test_levels_and_the_game_page(client, auth_headers):
