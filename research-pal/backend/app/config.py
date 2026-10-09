@@ -83,7 +83,10 @@ LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "8000"))
 LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "medium").strip().lower()  # low|medium|high|"" (off)
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "120"))
 
-EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "default").strip().lower()
+EMBEDDING_BACKEND = os.getenv("EMBEDDING_BACKEND", "default").strip().lower()  # default | gemini | hash
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
+GEMINI_EMBED_DIM = int(os.getenv("GEMINI_EMBED_DIM", "768"))
 LINK_THRESHOLD = float(os.getenv("LINK_THRESHOLD", "0.40"))
 
 
