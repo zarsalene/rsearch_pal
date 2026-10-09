@@ -146,7 +146,7 @@ test.describe.serial("Research Pal", () => {
     await page.getByRole("tab", { name: "Like I am 12" }).click();
     await page.getByRole("button", { name: "Explain it like I am 12" }).click();
     await expect(page.locator(".eli-result .answer").first()).toContainText("Simple: ");
-    await expect(page.locator(".eli-result").getByText("AI suggestion")).toHaveCount(3);
+    await expect(page.locator(".eli-result").getByText("AI suggestion")).toHaveCount(2);
     await expect(page.getByText("The paper calls this: hypothesis agent.")).toBeVisible();
 
     // A5: the quiz. One question at a time. A wrong answer shows the correct quote and page.
@@ -585,6 +585,12 @@ test.describe.serial("Research Pal", () => {
     await expect(list.locator(".toreaditem").first()).toContainText("Fits");
     await list.locator(".toreaditem").nth(1).getByRole("button", { name: "Not useful" }).click();
     await expect(list.locator(".toreaditem")).toHaveCount(1);
+
+    // suggestions: from the references and the citations of the library papers. Each has a tag and a true reason.
+    await list.getByRole("button", { name: "Suggest papers now" }).click();
+    await expect(page.getByText(/new suggestions? in your To read list/)).toBeVisible();
+    await expect(list.getByText("Suggested").first()).toBeVisible();
+    await expect(list.getByText(/Cited by \d+ of your papers|Cites \d+ of your papers/).first()).toBeVisible();
   });
 
 });
