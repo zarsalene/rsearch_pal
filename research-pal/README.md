@@ -157,6 +157,14 @@ The **Journey** tab shows the whole road of your PhD as a map with six regions. 
 
 A region at 0% says **Not started** and gives a kind first step. There is no blame. On a phone, a list below the picture shows the same data. The switches **Knowledge Garden** and **PhD Expedition map** in Settings → Features turn these parts off.
 
+## Quests, boss fights and Duck
+
+- **Weekly quests:** on the **Today** page, the server offers 3 quests each week. They fit your PhD stage and the features that exist. You choose 1 or 2. A third choice is refused. You can drop a quest at any time. A quest that you do not finish has **no penalty**: it just goes away.
+- **Conditions:** the server checks them after each point event. Example: "Find 3 papers that disagree" counts only explained links of the type "can be compared" that have a verified quote in both PDFs. A quest that is done gives points one time and a done date. The **Journey** page has the quest log.
+- **Boss fights:** on a card, click **Mark as boss** for a very hard paper. A crown shows in the library. The boss is defeated when your quiz answers and your Feynman check are both 80% or more (at least 3 quiz answers). You get the badge "Boss defeated" with the title and 50 points. The victory stays if you remove the mark.
+- **Duck:** in the Understand tab, the field says "Explain it to Duck". Duck shows a short, kind message after your explanation, a boss victory or a quiz. The texts are fixed. There is no AI. Click **Hide Duck**, or use the switch in Settings → Features.
+- The switches **Weekly quests and boss fights** and **Duck companion** turn these parts off. The backup file holds your quests and your bosses.
+
 ## AI use log
 
 The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.
@@ -268,7 +276,7 @@ npm run e2e                 # tests in a real browser
 ## Feature switches
 
 Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has two entries: **Chat** and **Thesis direction**.
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden** and **PhD Expedition map**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights** and **Duck companion**.
 
 ## Later (your list)
 

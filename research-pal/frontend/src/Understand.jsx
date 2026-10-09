@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
+import Duck from "./Duck.jsx";
 
 const MARKS = [
   ["correct", "Correct"],
@@ -96,7 +97,7 @@ function when(t) {
   return new Date(t * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
-function Explain({ paperId, cardId, notify }) {
+function Explain({ paperId, cardId, notify, duck, onEvent }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
@@ -118,7 +119,9 @@ function Explain({ paperId, cardId, notify }) {
     e.preventDefault();
     setBusy(true);
     try {
-      setResult(await api.explain(paperId, text, cardId));
+      const r = await api.explain(paperId, text, cardId);
+      setResult(r);
+      onEvent(r.boss_defeated ? "boss_defeated" : r.xp_gained > 0 || r.score >= 70 ? "feynman_pass" : "feynman_try", String(r.id));
       await loadHistory();
     } catch (err) {
       notify(err.message);
@@ -141,7 +144,7 @@ function Explain({ paperId, cardId, notify }) {
       <p className="lead">Explain the main idea of the paper in your own words. Do not copy from the PDF. The AI shows what is right and what is missing. You write the text, not the AI.</p>
       <form onSubmit={check}>
         <label htmlFor="explain-text" className="field-label">
-          Your explanation
+          {duck ? "Explain it to Duck" : "Your explanation"}
         </label>
         <textarea id="explain-text" rows={7} maxLength={3000} value={text} onChange={(e) => setText(e.target.value)} placeholder="Example: The authors build a system with two agents. The first agent proposes attacks. The second agent tests them." />
         <div className="row">
@@ -253,7 +256,7 @@ function Eli12({ paperId, cardId, card, notify }) {
   );
 }
 
-function Quiz({ paperId, cardId, notify }) {
+function Quiz({ paperId, cardId, notify, onEvent }) {
   const [saved, setSaved] = useState([]);
   const [queue, setQueue] = useState([]); // the questions of this round
   const [i, setI] = useState(0);
@@ -304,6 +307,7 @@ function Quiz({ paperId, cardId, notify }) {
     setBusy("answer");
     try {
       const r = await api.answerQuiz(queue[i].id, answer);
+      if (r.boss_defeated) onEvent("boss_defeated", r.id);
       setRes(r);
       setMarks((m) => [...m, r.mark]);
       await loadSaved();
@@ -397,7 +401,9 @@ function Quiz({ paperId, cardId, notify }) {
 }
 
 // The card page has a tab "Understand" with three parts. A part that is switched off in Settings has no tab.
-export default function Understand({ paperId, cardId, card, parts, notify }) {
+export default function Understand({ paperId, cardId, card, parts, onHideDuck, notify }) {
+  const [event, setEvent] = useState({ name: "start", seed: "" });
+  const onEvent = (name, seed = "") => setEvent({ name, seed });
   const all = [
     ["feynman", "Explain it to me"],
     ["eli12", "Like I am 12"],
@@ -415,9 +421,10 @@ export default function Understand({ paperId, cardId, card, parts, notify }) {
           </button>
         ))}
       </div>
-      {current === "feynman" && <Explain paperId={paperId} cardId={cardId} notify={notify} />}
+      {current === "feynman" && <Explain paperId={paperId} cardId={cardId} notify={notify} duck={!!parts.duck} onEvent={onEvent} />}
       {current === "eli12" && <Eli12 paperId={paperId} cardId={cardId} card={card} notify={notify} />}
-      {current === "quiz" && <Quiz paperId={paperId} cardId={cardId} notify={notify} />}
+      {current === "quiz" && <Quiz paperId={paperId} cardId={cardId} notify={notify} onEvent={onEvent} />}
+      {parts.duck && <Duck event={event} onHide={onHideDuck} />}
     </section>
   );
 }

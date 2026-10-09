@@ -90,6 +90,13 @@ export const api = {
   reviewGarden: (date, tz) => request(`/api/review/garden?date=${date}&tz=${tz}`),
   rateReview: (id, rating, date) => request(`/api/review/${id}`, { method: "POST", json: { rating, date } }),
   journeyMap: () => request("/api/journey/map"),
+  // Quests, bosses, Duck. The server checks the conditions. The page only shows them.
+  quests: (date, tz) => request(`/api/quests?date=${date}&tz=${tz}`),
+  chooseQuest: (code, date) => request(`/api/quests/${code}/choose?date=${date}`, { method: "POST" }),
+  dropQuest: (code, date) => request(`/api/quests/${code}/drop?date=${date}`, { method: "POST" }),
+  setBoss: (id, boss) => request(`/api/papers/${id}/boss`, { method: "POST", json: { boss } }),
+  bosses: () => request("/api/bosses"),
+  companion: (event, seed = "") => request(`/api/companion?event=${event}&seed=${encodeURIComponent(seed)}`),
   // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
   features: () => request("/api/features"),
   setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 import { animationsOn, levelPercent, setAnimations, tzMinutes } from "./game.js";
 import ExpeditionMap from "./ExpeditionMap.jsx";
+import { QuestLog } from "./Quests.jsx";
 import { Icon } from "./icons.jsx";
 
 const REWARD_HELP = "Conditions: level:3 (a level, by number), xp:500, streak:7 or cards:20.";
@@ -159,7 +160,7 @@ function Rewards({ rewards, onChanged, notify }) {
 }
 
 // Level, streak, badges, records and your own rewards. The points come from work that the server checked.
-export default function Journey({ notify, mapOn = false, gameOn = true, onGo = () => {} }) {
+export default function Journey({ notify, mapOn = false, gameOn = true, questsOn = false, onGo = () => {} }) {
   const [game, setGame] = useState(null);
   const [anim, setAnim] = useState(animationsOn);
   const load = useCallback(async () => {
@@ -196,6 +197,7 @@ export default function Journey({ notify, mapOn = false, gameOn = true, onGo = (
       <h1>Journey</h1>
       <p className="lead">Points come only from real work that the app can check: a card with checked quotes, a Feynman check that you passed, a correct quiz answer, a link with quotes, a focus session and your win of the day.</p>
       {mapOn && <ExpeditionMap onGo={onGo} notify={notify} />}
+      {questsOn && <QuestLog notify={notify} />}
       <div className="today-grid">
         <LevelCard game={game} />
         <StreakCard streak={game.streak} onWeekend={weekend} />

@@ -128,7 +128,7 @@ test.describe.serial("Research Pal", () => {
     await page.getByRole("tab", { name: "Understand" }).click();
 
     // A1: the Feynman check. The fake AI marks 2 claims correct. The server marks the number 95.0 wrong (it is not in the PDF).
-    await page.getByLabel("Your explanation").fill("The system uses a hypothesis agent. It reaches a precision of 91.4 percent. The recall is 95.0 percent. It also cooks pasta.");
+    await page.getByLabel("Explain it to Duck").fill("The system uses a hypothesis agent. It reaches a precision of 91.4 percent. The recall is 95.0 percent. It also cooks pasta.");
     await page.getByRole("button", { name: "Check my explanation" }).click();
     await expect(page.getByLabel("Score 67 of 100")).toBeVisible();
     await expect(page.locator(".claim.mark-correct:not(.legend)")).toHaveCount(2);
@@ -170,7 +170,7 @@ test.describe.serial("Research Pal", () => {
   test("Game: a Feynman pass gives points, and the Journey page shows them", async ({ page }) => {
     await signIn(page);
     await page.getByRole("tab", { name: "Understand" }).click();
-    await page.getByLabel("Your explanation").fill("Analysts spend many hours on manual log review. The system uses a hypothesis agent and a validation agent. It reaches a precision of 91.4 percent and a recall of 84.2 percent.");
+    await page.getByLabel("Explain it to Duck").fill("Analysts spend many hours on manual log review. The system uses a hypothesis agent and a validation agent. It reaches a precision of 91.4 percent and a recall of 84.2 percent.");
     await page.getByRole("button", { name: "Check my explanation" }).click();
     await expect(page.getByLabel("Score 100 of 100")).toBeVisible();
     await expect(page.locator(".xpnote")).toContainText("+25 points"); // the server gave the points. The page cannot.
@@ -235,6 +235,50 @@ test.describe.serial("Research Pal", () => {
     for (const name of ["Method Workshop", "Data Mines", "Writing Coast", "Defense Castle"]) {
       await expect(map.getByRole("button", { name: new RegExp(name + ", 0%, Not started") })).toBeVisible(); // these features come in later sprints
     }
+  });
+
+  test("Quests: choose 2 of 3, a third is refused, a drop has no penalty; mark a boss; the Duck can be hidden", async ({ page }) => {
+    await signIn(page, true);
+    const block = page.getByRole("region", { name: "Quests of this week" });
+    await expect(block.getByRole("heading", { name: "Choose your quests" })).toBeVisible();
+    await expect(block.locator("li.quest")).toHaveCount(3);
+    const choose = block.getByRole("button", { name: "Choose", exact: true });
+    await choose.first().click();
+    await expect(block.locator("li.quest.chosen")).toHaveCount(1);
+    await block.getByRole("button", { name: "Choose", exact: true }).first().click();
+    await expect(block.locator("li.quest.chosen")).toHaveCount(2);
+    await expect(block.getByRole("button", { name: "Choose", exact: true })).toBeDisabled(); // the third is refused: 2 each week
+    await block.getByRole("button", { name: "Drop it" }).first().click(); // a drop has no penalty
+    await expect(block.locator("li.quest.chosen")).toHaveCount(1);
+    await expect(block.getByRole("button", { name: "Choose", exact: true }).first()).toBeEnabled();
+
+    // a boss: the button on the card, the crown in the library, the line in the Journey page
+    await page.getByRole("tab", { name: "Card", exact: true }).click();
+    await page.getByRole("button", { name: "Mark as boss" }).click();
+    await expect(page.getByRole("button", { name: /Boss paper/ })).toBeVisible();
+    await expect(page.locator(".pitem.sel .crown")).toBeVisible();
+    await page.getByRole("tab", { name: "Journey" }).click();
+    const bosses = page.getByRole("region", { name: "Bosses" });
+    await expect(bosses).toContainText("AUTOMA");
+    await expect(bosses).toContainText("both need 80%");
+    await expect(page.getByRole("region", { name: "Quest log" })).toBeVisible();
+    await page.getByRole("tab", { name: "Card", exact: true }).click();
+    await page.getByRole("button", { name: /Boss paper/ }).click(); // take the mark away
+    await expect(page.getByRole("button", { name: "Mark as boss" })).toBeVisible();
+
+    // the Duck: it says the text of the field, shows a message, and can be hidden
+    await page.getByRole("tab", { name: "Understand" }).click();
+    await expect(page.locator("aside.duck")).toContainText(/Duck/);
+    await page.getByLabel("Explain it to Duck").fill("The system uses a hypothesis agent and a validation agent together.");
+    await page.getByRole("button", { name: "Check my explanation" }).click();
+    await expect(page.getByLabel("Score", { exact: false }).first()).toBeVisible();
+    await expect(page.locator(".duckmsg")).not.toBeEmpty();
+    await page.getByRole("button", { name: "Hide Duck" }).click();
+    await expect(page.locator("aside.duck")).toHaveCount(0);
+    await expect(page.getByLabel("Your explanation")).toBeVisible();
+    await page.getByRole("tab", { name: "Settings" }).click(); // put the Duck back for the other tests
+    await page.getByRole("switch", { name: /Duck companion/ }).click();
+    await expect(page.getByRole("switch", { name: /Duck companion/ })).toBeChecked();
   });
 
   test("a feature switch hides the Chat tab and brings it back", async ({ page }) => {

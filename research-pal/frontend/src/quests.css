@@ -1,0 +1,11 @@
+/* ---- Quests, bosses, Duck (Sprint 07) ---- */
+.questlist{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.quest{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:12px 16px;border-radius:var(--r-md);background:var(--surface-2);border:1px solid transparent}
+.quest.chosen{border-color:var(--accent-ring);background:var(--accent-soft)}
+.quest.done{border-color:var(--ok);background:var(--ok-soft)}
+.quest h3{margin:0 0 2px;font-size:1rem}
+.quest p{margin:2px 0}
+.crown{color:var(--warn);margin-right:4px;vertical-align:-2px}
+.duck{display:flex;align-items:center;gap:12px;margin-top:22px;padding:10px 16px;border-radius:var(--r-lg);background:var(--surface-2);max-width:560px}
+.duckmsg{margin:0;flex:1;font-size:.95rem}
+.duckicon{flex:none}

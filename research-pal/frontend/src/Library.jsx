@@ -129,7 +129,10 @@ export default function Library({ papers, selectedId, config, subQuestions = [],
         {shown.map((p) => (
           <li key={p.id}>
             <button className={"pitem" + (p.id === selectedId ? " sel" : "")} onClick={() => onSelect(p.id)}>
-              <span className="ptitle">{p.title || p.filename}</span>
+              <span className="ptitle">
+                {p.is_boss ? <Icon name="crown" size={13} className="crown" /> : null}
+                {p.title || p.filename}
+              </span>
               <span className={"pstat s-" + (p.status === "ready" ? p.verdict || "ready" : p.status)}>{statusText(p)}</span>
               {p.focus && (
                 <span className="pfocus">

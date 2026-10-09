@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
 import FocusTimer from "./FocusTimer.jsx";
+import { QuestBlock } from "./Quests.jsx";
 import { tzMinutes } from "./game.js";
 
 // The date of the student, as YYYY-MM-DD. The server can be in another time zone.
@@ -135,7 +136,7 @@ function Wins({ data, date, onChanged, notify, inputRef }) {
 }
 
 // The home page. One main action is clear. The other blocks are calm and small.
-export default function Today({ papers, onAction, gameOn = false, reviewOn = false, onOpenReview, notify }) {
+export default function Today({ papers, onAction, gameOn = false, reviewOn = false, questsOn = false, onOpenReview, notify }) {
   const [date] = useState(localDate);
   const [data, setData] = useState(null);
   const [game, setGame] = useState(null);
@@ -193,6 +194,8 @@ export default function Today({ papers, onAction, gameOn = false, reviewOn = fal
         )}
       </section>
 
+      {questsOn && <QuestBlock notify={notify} />}
+
       <div className="today-grid">
         <Goals data={data} date={date} onChanged={load} notify={notify} />
         <FocusTimer date={date} goals={data.goals} papers={papers} active={data.active_session} onChanged={load} notify={notify} />
@@ -231,10 +234,12 @@ export default function Today({ papers, onAction, gameOn = false, reviewOn = fal
             </div>
           ))
         )}
-        <div className="soon">
-          <strong>Quest</strong>
-          <span className="small muted">Coming soon</span>
-        </div>
+        {!questsOn && (
+          <div className="soon">
+            <strong>Quest</strong>
+            <span className="small muted">Coming soon</span>
+          </div>
+        )}
         {garden ? (
           <div className="soon live" aria-label="Review">
             <strong>Review</strong>
