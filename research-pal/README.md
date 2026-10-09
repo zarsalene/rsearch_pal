@@ -60,6 +60,20 @@ Select a word or a short term in a card or in the chat. A small box opens.
 - Click **Save to glossary** to keep the word. The **Glossary** tab lists your words. You can search and delete them. The backup file holds your glossary.
 - The server makes the text again when you save a word. The page cannot send its own text.
 
+## Understand: explain, like I am 12, quiz
+
+Open a card and click **Understand**. There are three parts. Each part has a switch in Settings → Features.
+
+- **Explain it to me.** Write the main idea of the paper in your own words. Do not copy from the PDF. The AI marks each sentence: **Correct** (green), **Partly correct** (orange), **Wrong** (red), **Not in the paper** or **Cannot check** (gray). Click a sentence to see the quote and the page.
+  - The server checks each quote in the PDF. A mark without a quote that the server finds becomes **Cannot check**.
+  - The server also checks the numbers. A number that is not in the paper makes the sentence **Wrong**, even if the AI said "correct".
+  - The app lists the main points of the card that you did not mention. It gives a score from 0 to 100 and a kind message. It saves each attempt, so you see your progress.
+  - The AI never writes the explanation for you.
+- **Like I am 12.** Choose one part of the card. You get a simple text, one example and one analogy. The example and the analogy have the label **AI suggestion**. They are not from the paper. The server keeps no simple text that changes a number or a name.
+- **Quiz me.** The AI asks 3 to 5 questions. Each question has a quote from the PDF as its source. The server drops a question without a verified quote. You answer from memory. Then the app shows the correct answer, the quote and the page. The questions are saved. A later sprint will use them for the spaced review. Words that you save in the glossary are saved in the same way.
+
+The backup file holds your attempts and your questions.
+
 ## AI use log
 
 The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.
@@ -170,7 +184,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode** and **Word helper and glossary**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me** and **Word helper and glossary**.
 
 ## Later (your list)
 

@@ -62,6 +62,14 @@ export const api = {
   addGlossary: (term, paper_id) => request("/api/glossary", { method: "POST", json: { term, paper_id } }),
   deleteGlossary: (id) => request(`/api/glossary/${id}`, { method: "DELETE" }),
   aiLog: (limit = 1) => request(`/api/ai-log?limit=${limit}`),
+  // Understand: Feynman check, like I am 12, quiz. The server marks each claim and checks each quote.
+  explain: (id, text, cardId = "") => request(`/api/papers/${id}/explain`, { method: "POST", json: { text, card_id: cardId || "" } }),
+  explanations: (id, cardId = "") => request(`/api/papers/${id}/explanations?card_id=${encodeURIComponent(cardId || "")}`),
+  deleteExplanation: (eid) => request(`/api/explanations/${eid}`, { method: "DELETE" }),
+  eli12: (id, field, cardId = "") => request(`/api/papers/${id}/eli12`, { method: "POST", json: { field, card_id: cardId || "" } }),
+  makeQuiz: (id, cardId = "") => request(`/api/papers/${id}/quiz`, { method: "POST", json: { card_id: cardId || "" } }),
+  quizList: (id) => request(`/api/papers/${id}/quiz`),
+  answerQuiz: (rid, answer) => request(`/api/quiz/${rid}/answer`, { method: "POST", json: { answer } }),
   // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
   features: () => request("/api/features"),
   setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),

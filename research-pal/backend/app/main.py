@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, ste, vectors, words
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, ste, understand, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -619,6 +619,97 @@ def simplify_text(body: SimplifyTextIn):
     return run_simplify(text)
 
 
+# ---------- understand: Feynman check, like I am 12, quiz ----------
+def run_understand(pid: str, feature: str, fn, *args):
+    must_get(pid)
+    try:
+        with llm.cache_scope(pid), llm.ai_context(feature, pid):
+            return fn(pid, *args)
+    except understand.UnderstandError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+class ExplainIn(BaseModel):
+    text: str
+    card_id: str = ""
+
+
+@app.post("/api/papers/{pid}/explain", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
+def explain_paper(pid: str, body: ExplainIn):
+    """The Feynman check. The student explains the paper. The server checks each mark of the AI against the PDF."""
+    return run_understand(pid, "explain", understand.explain, body.text, body.card_id)
+
+
+@app.get("/api/papers/{pid}/explanations", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
+def list_explanations(pid: str, card_id: str | None = None):
+    must_get(pid)
+    return [{"id": e["id"], "card_id": e["card_id"], "text": e["text"], "score": e["score"], "created_at": e["created_at"], "result": e["result"]}
+            for e in db.explanation_list(pid, card_id)]
+
+
+@app.delete("/api/explanations/{eid}", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
+def delete_explanation(eid: str):
+    if not db.explanation_delete(eid):
+        raise HTTPException(404, "Attempt not found.")
+    return {"ok": True}
+
+
+class Eli12In(BaseModel):
+    field: str
+    card_id: str = ""
+
+
+@app.post("/api/papers/{pid}/eli12", dependencies=[Depends(auth.require_auth), Depends(features.require("eli12"))])
+def eli12_field(pid: str, body: Eli12In):
+    return run_understand(pid, "eli12", understand.eli12, body.field, body.card_id)
+
+
+class QuizIn(BaseModel):
+    card_id: str = ""
+
+
+@app.post("/api/papers/{pid}/quiz", dependencies=[Depends(auth.require_auth), Depends(features.require("quiz"))])
+def make_quiz(pid: str, body: QuizIn):
+    """New questions. Each question has a quote that the server found in the PDF. The answers stay on the server until the student answers."""
+    return run_understand(pid, "quiz", understand.make_quiz, body.card_id)
+
+
+@app.get("/api/papers/{pid}/quiz", dependencies=[Depends(auth.require_auth), Depends(features.require("quiz"))])
+def list_quiz(pid: str):
+    must_get(pid)
+    return [{"id": r["id"], "question": r["question"], "last_mark": r["last_mark"], "tries": r["tries"], "card_id": r["card_id"]} for r in db.review_list(pid, "quiz")]
+
+
+class AnswerIn(BaseModel):
+    answer: str
+
+
+@app.post("/api/quiz/{rid}/answer", dependencies=[Depends(auth.require_auth), Depends(features.require("quiz"))])
+def answer_quiz(rid: str, body: AnswerIn):
+    item = db.review_get(rid)
+    if not item or item["kind"] != "quiz":
+        raise HTTPException(404, "Question not found.")
+    try:
+        with llm.cache_scope(item["paper_id"]), llm.ai_context("quiz", item["paper_id"]):
+            return understand.mark_answer(rid, body.answer)
+    except understand.UnderstandError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.delete("/api/quiz/{rid}", dependencies=[Depends(auth.require_auth), Depends(features.require("quiz"))])
+def delete_quiz(rid: str):
+    item = db.review_get(rid)
+    if not item or item["kind"] != "quiz":
+        raise HTTPException(404, "Question not found.")
+    with db.conn() as c:
+        c.execute("DELETE FROM review_items WHERE id=?", (rid,))
+    return {"ok": True}
+
+
 # ---------- word helper and glossary ----------
 class DefineIn(BaseModel):
     term: str
@@ -751,7 +842,9 @@ def export():
         d["extra_cards"] = [{"id": x["id"], "focus": x["focus"], "purpose": x["purpose"], "card": x["card"]} for x in db.list_extra(p["id"]) if x["card"]]
         papers.append(d)
     glossary = [{k: g[k] for k in ("id", "term", "explanation", "source", "paper_id", "page", "created_at")} for g in db.glossary_list()]
-    return {"version": 1, "thesis_question": db.get_setting("thesis_question"), "papers": papers, "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"]}
+    return {"version": 1, "thesis_question": db.get_setting("thesis_question"), "papers": papers, "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
+            "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
+            "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")]}
 
 
 @app.post("/api/import", dependencies=[Depends(auth.require_auth)])
@@ -784,6 +877,18 @@ def import_backup(data: dict, background: BackgroundTasks):
             if str(g.get("source")) in ("paper", "ai") and str(g.get("id", "")).isalnum():
                 db.glossary_add(str(g["term"])[:80], str(g["explanation"])[:3000], str(g["source"]), str(g.get("paper_id", "")), int(g.get("page") or 0), str(g["id"]), float(g.get("created_at") or 0) or None)
         except (KeyError, TypeError, ValueError, sqlite3.IntegrityError):
+            pass
+    for e in data.get("explanations") or []:  # the attempts and the quiz questions are part of the backup. A row that exists is skipped.
+        try:
+            if str(e["id"]).isalnum() and not db.explanation_get(str(e["id"])) and isinstance(e.get("result"), dict):
+                db.explanation_add(str(e["paper_id"]), str(e.get("card_id", "")), str(e["text"])[:3000], e["result"], int(e.get("score") or 0), str(e["id"]), float(e.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for r in data.get("quiz") or []:
+        try:
+            if str(r["id"]).isalnum() and not db.review_get(str(r["id"])):
+                db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
             pass
     for r in data.get("ai_log") or []:
         try:

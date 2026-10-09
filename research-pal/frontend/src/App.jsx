@@ -161,6 +161,7 @@ export default function App() {
               <CardView
                 key={selected}
                 id={selected}
+                parts={{ feynman: on("feynman"), eli12: on("eli12"), quiz: on("quiz") }}
                 onChanged={refresh}
                 onDeleted={() => {
                   setSelected(null);

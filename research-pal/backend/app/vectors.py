@@ -1,11 +1,12 @@
 """Local vector store (ChromaDB). Embeddings are made on the server. No data goes out."""
-import hashlib, math, re, threading
+import hashlib, logging, math, re, threading, time
 
 import chromadb
 from chromadb.config import Settings
 
 from . import config
 
+log = logging.getLogger("research_pal")
 _lock = threading.Lock()
 _client = None
 _ef = None
@@ -56,10 +57,32 @@ def index_chunks(paper_id: str, chunks: list[dict]) -> None:
         )
 
 
+def _reindex_from_text(paper_id: str) -> None:
+    """Make the search index of one paper again from the page texts in the database. No AI call."""
+    from . import db, pdf  # here, because db and pdf need this module at start-up
+
+    chunks = pdf.chunk_pages(db.get_pages(paper_id))
+    index_chunks(paper_id, [c for c in chunks if not c["refs"]])
+
+
 def query_paper(paper_id: str, query: str, n: int = 4) -> list[dict]:
-    col = _col("chunks")
-    r = col.query(query_embeddings=embed([query]), n_results=n, where={"paper_id": paper_id})
-    return [{"page": m["page"], "idx": m["idx"], "text": d} for d, m in zip(r["documents"][0], r["metadatas"][0])]
+    """The best passages of one paper. ChromaDB can fail by chance with "Nothing found on disk" for an index that it just made.
+    Then we try again, and if it still fails, we make the index of this paper again from the saved text."""
+    vector = embed([query])
+    for attempt in range(5):
+        try:
+            r = _col("chunks").query(query_embeddings=vector, n_results=n, where={"paper_id": paper_id})
+            return [{"page": m["page"], "idx": m["idx"], "text": d} for d, m in zip(r["documents"][0], r["metadatas"][0])]
+        except Exception:
+            if attempt == 4:
+                raise
+            if attempt == 2:
+                log.warning("The search index of paper %s does not answer. The server makes it again.", paper_id)
+                try:
+                    _reindex_from_text(paper_id)
+                except Exception:
+                    log.exception("Could not make the search index again")
+            time.sleep(0.15)
 
 
 def search(query: str, n: int = 8) -> list[dict]:
