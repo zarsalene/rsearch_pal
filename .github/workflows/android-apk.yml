@@ -5,10 +5,11 @@ name: Android APK
 
 on:
   workflow_dispatch:
-  # It also starts when this file changes on a branch. The "Run workflow" button shows only for files on main.
+  # It also starts when this file or the app changes on a branch. The "Run workflow" button shows only for files on main.
   push:
     paths:
       - .github/workflows/android-apk.yml
+      - research-pal/frontend/**
 
 jobs:
   apk:

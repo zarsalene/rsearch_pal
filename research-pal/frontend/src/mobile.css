@@ -7,8 +7,19 @@
   --safe-b:env(safe-area-inset-bottom,0px);
   --dock-h:62px;
 }
+/* The grip of the word sheet is only for a phone. */
+.sheet-grip{display:none}
 /* The scrim is not visible on a desktop. */
 .scrim{display:none}
+
+/* The pill of the active tab. Motion moves it from one tab to the next (layoutId). It sits behind the icon and the label. */
+.tabs button,.tabs button[aria-selected=true]{position:relative;background:none;box-shadow:none}
+.tabs button[aria-selected=true]{color:var(--ink)}
+.tabs button>.icon,.tabs button>.tl{position:relative;z-index:1}
+.tabpill{position:absolute;inset:0;border-radius:var(--tab-r-in);background:var(--surface);box-shadow:0 1px 2px rgba(24,24,27,.10),0 0 0 1px rgba(24,24,27,.05)}
+:root[data-theme="dark"] .tabpill{box-shadow:0 0 0 .5px rgba(255,255,255,.10)}
+/* Motion animates the toast, so the old CSS animation is off. */
+.toast{animation:none}
 
 html.native,html.native body{overscroll-behavior:none}
 html.native .bar,html.native .tabs,html.native .btn,html.native .pitem{-webkit-user-select:none;user-select:none}
@@ -35,19 +46,17 @@ html.native .answer,html.native blockquote,html.native .passage,html.native .wor
     border-radius:0;border-top:1px solid var(--line);
     background:var(--nav);box-shadow:none;
   }
-  .tabs button,
-  .tabs button[aria-selected=true]{background:none;box-shadow:none}
   .tabs button{
-    position:relative;flex-direction:column;justify-content:center;gap:3px;
+    flex-direction:column;justify-content:center;gap:3px;
     padding:4px 0;border-radius:12px;min-width:0;min-height:48px;
     font-size:.66rem;font-weight:600;letter-spacing:0;color:var(--muted);
   }
   .tabs button .tl{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-  /* the icon sits in a soft pill. On the active tab the pill is filled with the accent. */
-  .tabs button .icon{box-sizing:content-box;width:20px;height:20px;padding:4px 16px;border-radius:999px;transition:background .25s var(--ease),color .2s,transform .25s var(--spring)}
-  .tabs button[aria-selected=true]{color:var(--ink)}
-  .tabs button[aria-selected=true] .icon{background:var(--accent-soft);color:var(--accent)}
-  .tabs button:active .icon{transform:scale(.92)}
+  /* on a phone the pill is a soft accent shape behind the icon. It uses margin, not transform, because Motion owns the transform. */
+  .tabpill{inset:auto;top:4px;left:50%;width:64px;height:30px;margin-left:-32px;border-radius:999px;background:var(--accent-soft);box-shadow:none}
+  .tabs button .icon{box-sizing:content-box;width:20px;height:20px;padding:5px 22px;margin:-5px -22px;transition:color .2s,transform .25s var(--spring)}
+  .tabs button[aria-selected=true] .icon{color:var(--accent)}
+  .tabs button:active .icon{transform:scale(.9)}
 
   /* ---- the page ---- */
   .layout,.layout.collapsed{grid-template-columns:1fr;min-height:calc(100dvh - 52px - var(--safe-t))}
@@ -111,9 +120,9 @@ html.native .answer,html.native blockquote,html.native .passage,html.native .wor
     left:0!important;right:0;top:auto!important;bottom:0;width:100%;max-width:none;
     max-height:70dvh;overflow-y:auto;
     border-radius:var(--r-xl) var(--r-xl) 0 0;padding:18px 18px calc(var(--safe-b) + 18px);
-    animation:sheet .32s var(--ease) both;
   }
-  .wordbox::before{content:"";display:block;width:38px;height:4px;border-radius:2px;margin:-8px auto 12px;background:var(--line-strong)}
+  .sheet-grip{display:block;width:100%;height:26px;margin:-12px 0 0;touch-action:none;cursor:grab;position:relative}
+  .sheet-grip::after{content:"";position:absolute;left:50%;top:10px;width:38px;height:4px;margin-left:-19px;border-radius:2px;background:var(--line-strong)}
 
   /* ---- sign in ---- */
   .login{padding:calc(var(--safe-t) + 24px) 20px calc(var(--safe-b) + 24px)}
@@ -124,20 +133,18 @@ html.native .answer,html.native blockquote,html.native .passage,html.native .wor
   .cmp-scroll{-webkit-overflow-scrolling:touch;border-radius:var(--r-lg)}
 }
 
-@keyframes sheet{from{transform:translateY(100%)}to{transform:none}}
-
 /* a very small phone */
 @media (max-width:360px){
   .main{padding-left:12px;padding-right:12px}
   .tabs button{font-size:.62rem}
-  .tabs button .icon{padding:4px 12px}
 }
 
 /* a phone turned sideways: the dock is thinner */
 @media (max-width:820px) and (orientation:landscape) and (max-height:480px){
   :root{--dock-h:50px}
   .tabs button{flex-direction:row;gap:6px;min-height:40px;font-size:.74rem}
-  .tabs button .icon{padding:2px 6px}
+  .tabs button .icon{padding:0;margin:0}
+  .tabpill{inset:3px 6px;top:3px;left:6px;width:auto;height:auto;margin:0}
   .bar{height:calc(46px + var(--safe-t))}
 }
 

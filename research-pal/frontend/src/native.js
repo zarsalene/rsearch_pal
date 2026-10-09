@@ -23,18 +23,31 @@ export async function syncStatusBar() {
   } catch {}
 }
 
-export async function initNative(onBack) {
-  if (!isNative) return;
+// Starts the phone functions. It gives back a cleanup function, so a second start (React strict mode) never leaves a double listener.
+export function initNative(onBack) {
+  if (!isNative) return () => {};
   document.documentElement.classList.add("native");
   syncStatusBar();
-  new MutationObserver(syncStatusBar).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-  try {
-    const { App } = await import("@capacitor/app");
-    // The back button of Android closes a drawer first. Then it leaves the app.
-    App.addListener("backButton", () => {
-      if (!onBack()) App.exitApp();
-    });
-    const { SplashScreen } = await import("@capacitor/splash-screen");
-    await SplashScreen.hide();
-  } catch {}
+  const observer = new MutationObserver(syncStatusBar);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  let stopped = false;
+  let handle = null;
+  (async () => {
+    try {
+      const { App } = await import("@capacitor/app");
+      // The back button of Android closes a drawer first. Then it leaves the app.
+      const h = await App.addListener("backButton", () => {
+        if (!onBack()) App.exitApp();
+      });
+      if (stopped) h.remove();
+      else handle = h;
+      const { SplashScreen } = await import("@capacitor/splash-screen");
+      await SplashScreen.hide();
+    } catch {}
+  })();
+  return () => {
+    stopped = true;
+    observer.disconnect();
+    handle?.remove();
+  };
 }

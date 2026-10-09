@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
 
@@ -11,7 +12,35 @@ function statusText(p) {
   return VERDICT[p.verdict] || "Ready";
 }
 
-export default function Library({ papers, selectedId, config, onSelect, onChanged, notify }) {
+export default function Library({ papers, selectedId, config, onSelect, onChanged, notify, onClose }) {
+  const side = useRef(null);
+  const drag = useRef(null);
+  // On a phone you can push the drawer to the left to close it. The drawer follows the finger (no React state, so it stays smooth).
+  const onTouchStart = (e) => {
+    if (!window.matchMedia("(max-width: 820px)").matches) return;
+    const t = e.touches[0];
+    drag.current = { x: t.clientX, y: t.clientY, dx: 0, on: false };
+  };
+  const onTouchMove = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    const t = e.touches[0];
+    const dx = t.clientX - d.x;
+    const dy = t.clientY - d.y;
+    if (!d.on && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.5) d.on = true;
+    if (!d.on) return;
+    d.dx = Math.min(0, dx);
+    side.current.style.transition = "none";
+    side.current.style.transform = `translateX(${d.dx}px)`;
+  };
+  const onTouchEnd = () => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d?.on) return;
+    side.current.style.transition = "";
+    side.current.style.transform = "";
+    if (d.dx < -80) onClose?.();
+  };
   const fileRef = useRef(null);
   const [purpose, setPurpose] = useState("");
   const [focus, setFocus] = useState("");
@@ -50,7 +79,7 @@ export default function Library({ papers, selectedId, config, onSelect, onChange
   };
 
   return (
-    <aside className="library" id="library" aria-label="Library">
+    <aside className="library" id="library" aria-label="Library" ref={side} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
       <div className="side-head">
         <h2>
           Library <span className="count">{papers.length}</span>
@@ -108,8 +137,9 @@ export default function Library({ papers, selectedId, config, onSelect, onChange
         </label>
       )}
       <ul className="plist">
-        {shown.map((p) => (
-          <li key={p.id}>
+        <AnimatePresence>
+        {shown.map((p, i) => (
+          <motion.li key={p.id} layout="position" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ type: "spring", stiffness: 320, damping: 30, delay: Math.min(i, 8) * 0.03 }}>
             <button className={"pitem" + (p.id === selectedId ? " sel" : "")} onClick={() => onSelect(p.id)}>
               <span className="ptitle">{p.title || p.filename}</span>
               <span className={"pstat s-" + (p.status === "ready" ? p.verdict || "ready" : p.status)}>{statusText(p)}</span>
@@ -119,8 +149,9 @@ export default function Library({ papers, selectedId, config, onSelect, onChange
                 </span>
               )}
             </button>
-          </li>
+          </motion.li>
         ))}
+        </AnimatePresence>
         {!papers.length && <li className="empty-list">No paper yet.</li>}
         {papers.length > 0 && !shown.length && <li className="empty-list">No paper matches “{filter}”.</li>}
       </ul>
