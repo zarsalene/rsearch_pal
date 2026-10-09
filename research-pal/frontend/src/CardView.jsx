@@ -524,6 +524,34 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
         </div>
       )}
 
+      {paper.status === "no_pdf" && (
+        <div className="errbox" role="status">
+          <strong>This paper has no PDF yet.</strong>
+          <p>
+            The app found the metadata, but no free PDF. Upload the PDF to read the paper.{" "}
+            <label className="btn small filebtn">
+              Upload the PDF
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                hidden
+                onChange={async (e) => {
+                  const f = e.target.files[0];
+                  if (!f) return;
+                  try {
+                    await api.uploadPdfFor(id, f);
+                    onChanged();
+                    load?.();
+                  } catch (err) {
+                    notify(err.message);
+                  }
+                }}
+              />
+            </label>
+          </p>
+        </div>
+      )}
+
       {paper.status === "error" && (
         <div className="errbox" role="alert">
           <strong>The card could not be made.</strong>

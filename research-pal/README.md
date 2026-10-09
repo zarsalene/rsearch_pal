@@ -206,6 +206,23 @@ On the Journey page, open **Duck Island**. It is a small game. It is only for fu
 
 You can switch each part off in **Settings → Features**: **Gap finder**, **Writing coach**, **Quality check of a paper**.
 
+## Find papers: add by DOI, import, To read
+
+**Add by DOI, link or title** (Library → Add paper). Type a DOI, an arXiv link or a title. The app asks free sources: OpenAlex, arXiv, Unpaywall and Semantic Scholar. It finds the authors, the year, the venue and a free PDF.
+- With a free PDF, the app reads the paper like any upload.
+- Without a free PDF, the paper stays in your library with the status **No PDF yet**. Open it and click **Upload the PDF**.
+- The metadata has the name of its source. When the PDF is there, the app checks each value in the PDF. A value that the PDF does not show stays marked **Check**. If the PDF has another DOI than the one that you asked for, the DOI is marked **Check**: maybe it is the wrong PDF.
+- A paper that you have already (same DOI or same title) is not added again.
+- For Unpaywall, put your email in `CONTACT_EMAIL` in `backend/.env`. This is the rule of Unpaywall. Without it, the app still uses the other sources.
+
+**Import from Zotero or BibTeX** (Settings). In Zotero, export your library as BibTeX or RIS. Choose the file. You can also choose the PDFs. The app matches a PDF to an entry by the file name in the entry, by the DOI or by the title. An entry with its PDF becomes a paper. An entry without a PDF goes to the **To read** list. A paper that you have already is skipped. You can import the same file again: nothing is added twice.
+
+**To read** (a tab). The list of papers that you did not read yet. Each item has a **fit score** from 0 to 100 and a reason, for example *Fits SQ2: 'validation, agent'*. The score compares the abstract with your main question and your sub-questions. It uses no AI. Write your question in the Thesis tab first, or all scores are 0. The scores are made again when the question changes.
+- **Read now**: the app looks for a free PDF. If there is none, the item stays. Then click **Upload the PDF**.
+- **Not useful**: the item goes away from the list.
+
+You can switch this feature off in **Settings → Features** (**Find papers**).
+
 ## Citations and the literature review builder
 
 **Metadata.** On a card, the block **Metadata** shows the authors, the year, the venue and the DOI of the paper. Click **Fill from the PDF**.
@@ -339,7 +356,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **Gap finder**, **Writing coach**, **Quality check**, **3D avatar** and **Duck Island**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **Gap finder**, **Writing coach**, **Quality check**, **Find papers**, **3D avatar** and **Duck Island**.
 
 ## Later (your list)
 

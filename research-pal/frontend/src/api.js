@@ -90,6 +90,27 @@ export const api = {
   reviewGarden: (date, tz) => request(`/api/review/garden?date=${date}&tz=${tz}`),
   rateReview: (id, rating, date) => request(`/api/review/${id}`, { method: "POST", json: { rating, date } }),
   journeyMap: () => request("/api/journey/map"),
+  // Find papers: add by DOI, link or title; import BibTeX or RIS; the To read list.
+  fromId: (query, addToRead = false) => request("/api/papers/from-id", { method: "POST", json: { query, add_to_read: addToRead } }),
+  uploadPdfFor: (id, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request(`/api/papers/${id}/pdf`, { method: "POST", form });
+  },
+  importBib: (file, pdfs = []) => {
+    const form = new FormData();
+    form.append("file", file);
+    for (const f of pdfs) form.append("pdfs", f);
+    return request("/api/import/bib", { method: "POST", form });
+  },
+  toRead: () => request("/api/to-read"),
+  setToRead: (id, status) => request(`/api/to-read/${id}`, { method: "PUT", json: { status } }),
+  readToRead: (id) => request(`/api/to-read/${id}/read`, { method: "POST" }),
+  uploadToRead: (id, file) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request(`/api/to-read/${id}/upload`, { method: "POST", form });
+  },
   // Gap finder, writing coach, quality check. The server checks each quote. The AI parts have the label "AI opinion".
   runGaps: (body) => request("/api/gaps", { method: "POST", json: body }),
   getGaps: (sq = "") => request(`/api/gaps?sub_question_id=${encodeURIComponent(sq)}`),

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, cite, coach, companion, critique, game, gaps, journey, metadata, pdf, play, project, quests, review, ste, today, understand, vectors, words, writing
+from . import bibimport, sources, triage, auth, cards, chat, config, db, features, links, llm, mindmap, cite, coach, companion, critique, game, gaps, journey, metadata, pdf, play, project, quests, review, ste, today, understand, vectors, words, writing
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -1560,7 +1560,7 @@ def export():
             "review_state": db.review_state_rows(), "quests_active": db.quests_all(), "activity": db.activity_list(),
             "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
             "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list(),
-            "play_rounds": [r for r in db.play_rounds_all() if r["finished"]], "play_items": db.play_items_list()}
+            "play_rounds": [r for r in db.play_rounds_all() if r["finished"]], "play_items": db.play_items_list(), "to_read": db.to_read_list()}
 
 
 def restore_project(data: dict) -> None:
@@ -1726,6 +1726,12 @@ def import_backup(data: dict, background: BackgroundTasks):
                 db.ai_log_add(row["feature"], row["paper_id"], row["provider"], row["model"], row["time"])
         except (KeyError, TypeError, ValueError):
             pass
+    for r in data.get("to_read") or []:  # the To read list is part of the backup. An item that exists is skipped.
+        try:
+            if str(r["id"]).isalnum():
+                db.to_read_add(r, str(r["id"]), float(r.get("added_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
     for r in data.get("play_rounds") or []:  # the coins of the mini-games are part of the backup
         try:
             rid = str(r["id"])
@@ -1777,3 +1783,209 @@ def play_buy(body: dict):
 @app.put("/api/play/items/{code}", dependencies=PLAY)
 def play_place(code: str, body: dict):
     return run_play(play.place, code, body.get("x"), body.get("y"))
+
+
+# ---------- Find papers: add by DOI, import BibTeX or RIS, the To read list (Sprint 10) ----------
+FIND = [Depends(auth.require_auth), Depends(features.require("findpapers"))]
+SOURCE_FIELDS = ("authors", "year", "venue")
+
+
+class FromIdIn(BaseModel):
+    query: str
+    add_to_read: bool = False
+
+
+def apply_source_meta(pid: str, meta: dict, verified: bool) -> None:
+    """Save the metadata of a source. It has the label of the source. A value that the PDF does not show stays in the list "Check"."""
+    p = db.get_paper(pid)
+    if not p or p.get("meta_source") == "student":
+        return  # never replace what the student wrote
+    raw = {"authors": meta.get("authors") or [], "year": meta.get("year") or "", "venue": meta.get("venue") or ""}
+    values = {"authors": [cite.parse_author(a) for a in raw["authors"][:metadata.MAX_AUTHORS] if a], "year": raw["year"] if re.fullmatch(r"(19|20)\d\d", raw["year"]) else "",
+              "venue": raw["venue"][:200], "doi": (meta.get("doi") or "").lower()}
+    if verified:
+        found = metadata.verify(raw, db.get_pages(pid))
+        check = [c for c in found["check"] if c != "doi"]  # a value that the PDF does not show stays in the list "Check"
+        if found["doi"] and not values["doi"]:
+            values["doi"] = found["doi"]
+        elif found["doi"] and found["doi"].lower() != values["doi"]:
+            check.append("doi")  # the PDF has another DOI than the one that you asked for: maybe a wrong PDF. The student must check.
+    else:
+        check = list(SOURCE_FIELDS)  # nothing is checked yet: the PDF is not here
+    metadata.save(pid, values, sorted(set(check)), meta.get("source") or "source")
+
+
+def process_from_source(pid: str, meta: dict) -> None:
+    process_paper(pid)
+    if (db.get_paper(pid) or {}).get("status") == "ready":
+        apply_source_meta(pid, meta, True)
+
+
+def write_pdf(pid: str, data: bytes) -> None:
+    config.PDF_DIR.mkdir(parents=True, exist_ok=True)
+    (config.PDF_DIR / f"{pid}.pdf").write_bytes(data)
+
+
+def new_paper_from_meta(meta: dict, data: bytes | None, background: BackgroundTasks) -> dict:
+    pid = db.new_id()
+    db.add_paper(pid, (meta["title"][:80] or "paper") + ".pdf", "", "", "queued" if data else "no_pdf", meta["title"][:300])
+    apply_source_meta(pid, meta, False)
+    if data:
+        write_pdf(pid, data)
+        background.add_task(process_from_source, pid, meta)
+    return {"id": pid, "status": "queued" if data else "no_pdf", "title": meta["title"]}
+
+
+def run_sources(fn, *args):
+    try:
+        return fn(*args)
+    except sources.SourceError as e:
+        raise HTTPException(502, str(e))
+
+
+def to_read_item(meta: dict, source: str) -> dict:
+    s = triage.score(meta.get("abstract") or meta["title"])
+    return {**meta, "score": s["score"], "reason": s["reason"], "source": source}
+
+
+@app.post("/api/papers/from-id", dependencies=FIND)
+def paper_from_id(body: FromIdIn, background: BackgroundTasks):
+    """A DOI, an arXiv link or a title. The app finds the metadata and a free PDF. Without a free PDF the paper has the status no_pdf."""
+    try:
+        query = sources.parse_input(body.query)
+    except sources.SourceError as e:
+        raise HTTPException(400, str(e))
+    meta = run_sources(sources.find, query)
+    old = db.paper_exists(meta["doi"], meta["title"])
+    if old:
+        return {"id": old["id"], "status": "exists", "title": old["title"], "message": "This paper is in your library already."}
+    if body.add_to_read:
+        item = db.to_read_add(to_read_item(meta, meta["source"]))
+        return {"status": "to_read" if item else "exists", "title": meta["title"], "message": "Added to your To read list." if item else "This paper is in your To read list already."}
+    data = sources.download_pdf(meta["pdf_urls"])
+    out = new_paper_from_meta(meta, data, background)
+    out["message"] = "The app is reading the paper." if data else "No free PDF was found. The paper is in your library. Upload the PDF to read it."
+    return out
+
+
+@app.post("/api/papers/{pid}/pdf", dependencies=FIND)
+async def upload_pdf_for(pid: str, background: BackgroundTasks, file: UploadFile = File(...)):
+    """The student adds the PDF of a paper that has no PDF yet."""
+    p = must_get(pid)
+    if p["status"] != "no_pdf":
+        raise HTTPException(400, "This paper has a PDF already.")
+    data = await file.read(config.MAX_UPLOAD_BYTES + 1)
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(400, "This file is not a PDF.")
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"The file is larger than {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
+    write_pdf(pid, data)
+    db.update_paper(pid, status="queued", error="")
+    meta = {"authors": cite.authors_of(p), "year": p.get("year") or "", "venue": p.get("venue") or "", "doi": p.get("doi") or "", "source": p.get("meta_source") or "source"}
+    background.add_task(process_from_source, pid, meta)
+    return {"id": pid, "status": "queued"}
+
+
+@app.post("/api/import/bib", dependencies=FIND)
+async def import_bib(background: BackgroundTasks, file: UploadFile = File(...), pdfs: list[UploadFile] = File(default=[])):
+    """A .bib or .ris file (for example from Zotero) and, if you like, the PDFs. An entry with its PDF becomes a paper. An entry without a PDF goes to the To read list."""
+    raw = await file.read(bibimport.MAX_FILE_CHARS + 1)
+    try:
+        entries = bibimport.parse(file.filename or "", raw.decode("utf-8", "replace"))
+    except bibimport.ImportError_ as e:
+        raise HTTPException(400, str(e))
+    files: dict[str, bytes] = {}
+    for f in pdfs:
+        data = await f.read(config.MAX_UPLOAD_BYTES + 1)
+        if data.startswith(b"%PDF-") and len(data) <= config.MAX_UPLOAD_BYTES:
+            files[(f.filename or "").rsplit("/", 1)[-1]] = data
+    added = to_read = skipped = 0
+    for e in entries:
+        meta = {**e, "source": "import"}
+        if db.paper_exists(e["doi"], e["title"]):
+            skipped += 1
+            continue
+        name = bibimport.match_pdf(e, files)
+        if name:
+            new_paper_from_meta(meta, files[name], background)
+            added += 1
+        elif db.to_read_add(to_read_item(meta, "import")):
+            to_read += 1
+        else:
+            skipped += 1
+    return {"entries": len(entries), "added": added, "to_read": to_read, "skipped": skipped,
+            "message": f"{added} added to the library, {to_read} added to the To read list, {skipped} skipped (already there)."}
+
+
+def rescore_to_read() -> None:
+    """The scores depend on the question and the sub-questions. When they change, the scores are made again."""
+    import hashlib
+
+    stamp = hashlib.sha1(json.dumps([db.thesis_question(), [s["text"] for s in db.list_sub_questions()]]).encode()).hexdigest()
+    if db.get_setting("triage_stamp") == stamp:
+        return
+    tg = triage.targets()
+    for it in db.to_read_list():
+        s = triage.score(it["abstract"] or it["title"], tg)
+        db.to_read_set(it["id"], score=s["score"], reason=s["reason"])
+    db.set_setting("triage_stamp", stamp)
+
+
+@app.get("/api/to-read", dependencies=FIND)
+def get_to_read():
+    rescore_to_read()
+    return [i for i in db.to_read_list() if i["status"] == "new"]
+
+
+class ToReadIn(BaseModel):
+    status: str
+
+
+@app.put("/api/to-read/{rid}", dependencies=FIND)
+def put_to_read(rid: str, body: ToReadIn):
+    if body.status not in ("new", "not_useful"):
+        raise HTTPException(400, "The status must be new or not_useful.")
+    if not db.to_read_get(rid):
+        raise HTTPException(404, "Item not found.")
+    db.to_read_set(rid, status=body.status)
+    return db.to_read_get(rid)
+
+
+@app.post("/api/to-read/{rid}/read", dependencies=FIND)
+def read_to_read(rid: str, background: BackgroundTasks):
+    """Read now: the app looks for a free PDF. If there is none, the item stays and the student uploads the PDF."""
+    it = db.to_read_get(rid)
+    if not it:
+        raise HTTPException(404, "Item not found.")
+    old = db.paper_exists(it["doi"], it["title"])
+    if old:
+        db.to_read_set(rid, status="read")
+        return {"id": old["id"], "status": "exists"}
+    meta = {"title": it["title"], "authors": it["authors"], "year": it["year"], "venue": it["venue"], "doi": it["doi"], "abstract": it["abstract"], "source": it["source"] or "source", "pdf_urls": []}
+    try:
+        found = sources.find({"doi": it["doi"]} if it["doi"] else {"title": it["title"]})
+        meta["pdf_urls"] = found["pdf_urls"]
+    except sources.SourceError:
+        pass
+    data = sources.download_pdf(meta["pdf_urls"])
+    if not data:
+        raise HTTPException(404, "No free PDF was found. Upload the PDF yourself.")
+    out = new_paper_from_meta(meta, data, background)
+    db.to_read_set(rid, status="read")
+    return out
+
+
+@app.post("/api/to-read/{rid}/upload", dependencies=FIND)
+async def upload_to_read(rid: str, background: BackgroundTasks, file: UploadFile = File(...)):
+    it = db.to_read_get(rid)
+    if not it:
+        raise HTTPException(404, "Item not found.")
+    data = await file.read(config.MAX_UPLOAD_BYTES + 1)
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(400, "This file is not a PDF.")
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"The file is larger than {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
+    meta = {"title": it["title"], "authors": it["authors"], "year": it["year"], "venue": it["venue"], "doi": it["doi"], "source": it["source"] or "source"}
+    out = new_paper_from_meta(meta, data, background)
+    db.to_read_set(rid, status="read")
+    return out

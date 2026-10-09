@@ -511,6 +511,43 @@ test.describe.serial("Research Pal", () => {
     expect(await points()).toBe(before); // play and shop gave no points
   });
 
+  test("Find papers: add by DOI (and not twice), import a BibTeX file, rate the To read list", async ({ page }) => {
+    await signIn(page, true);
+    const library = page.getByRole("complementary", { name: "Library" });
+    await expect(library.getByText("AUTOMA: Multi-agent threat hunting").first()).toBeVisible(); // the library has loaded
+    const field = library.getByLabel("Add by DOI, link or title");
+    if (!(await field.isVisible())) await library.getByRole("button", { name: "Add paper", exact: true }).click();
+    await expect(field).toBeVisible();
+
+    // a paper that has a free PDF: the app reads it
+    await library.getByLabel("Add by DOI, link or title").fill("https://doi.org/10.9999/closed.1");
+    await library.getByRole("button", { name: "Add the paper" }).click();
+    await expect(page.getByText("The app is reading the paper.")).toBeVisible();
+
+    // the same paper is not added twice
+    const count = await library.locator("li").count();
+    await library.getByLabel("Add by DOI, link or title").fill("https://doi.org/10.9999/closed.1");
+    await library.getByRole("button", { name: "Add the paper" }).click();
+    await expect(page.getByText("This paper is in your library already.")).toBeVisible();
+    expect(await library.locator("li").count()).toBe(count);
+
+    // import a BibTeX file without PDFs: the entries go to the To read list
+    await page.getByRole("tab", { name: "Settings" }).click();
+    const bib = "@article{a,\n title={Deep learning finds lung cancer in X-ray images},\n author={Doe, John},\n year={2022},\n abstract={We train deep learning models to find lung cancer in X-ray images.}\n}\n@article{b,\n title={Cooking pasta with tomatoes at home},\n author={Rossi, Mario},\n year={2020},\n abstract={How to cook pasta with tomato sauce and basil for dinner.}\n}\n";
+    await page.locator('input[accept*=".bib"]').setInputFiles({ name: "lib.bib", mimeType: "text/plain", buffer: Buffer.from(bib) });
+    await page.getByRole("button", { name: "Import", exact: true }).click();
+    await expect(page.getByText("0 added to the library, 2 added to the To read list, 0 skipped")).toBeVisible();
+
+    // the To read list: the best fit is first, with a reason. A not useful item goes away.
+    await page.getByRole("tab", { name: "To read" }).click();
+    const list = page.getByRole("region", { name: "To read" });
+    await expect(list.locator(".toreaditem")).toHaveCount(2);
+    await expect(list.locator(".toreaditem").first()).toContainText("Deep learning finds lung cancer in X-ray images");
+    await expect(list.locator(".toreaditem").first()).toContainText("Fits");
+    await list.locator(".toreaditem").nth(1).getByRole("button", { name: "Not useful" }).click();
+    await expect(list.locator(".toreaditem")).toHaveCount(1);
+  });
+
 });
 
 // Select one word inside an element, like a student does with the mouse. Then the page gets the mouseup event.

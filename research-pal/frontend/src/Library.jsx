@@ -9,13 +9,16 @@ function statusText(p) {
   if (p.status === "queued") return "Waiting…";
   if (p.status === "processing") return "Reading the paper…";
   if (p.status === "error") return "Needs attention";
+  if (p.status === "no_pdf") return "No PDF yet";
   return VERDICT[p.verdict] || "Ready";
 }
 
 // The sub-questions of a paper: all its cards together, in the order of the sub-questions.
 const paperTagIds = (p, subQuestions) => subQuestions.filter((s) => Object.values(p.tags || {}).some((ids) => ids.includes(s.id))).map((s) => s.id);
 
-export default function Library({ papers, selectedId, config, subQuestions = [], onSelect, onChanged, notify, citeOn = false }) {
+export default function Library({ papers, selectedId, config, subQuestions = [], onSelect, onChanged, notify, citeOn = false, findOn = false }) {
+  const [idText, setIdText] = useState("");
+  const [idBusy, setIdBusy] = useState(false);
   const fileRef = useRef(null);
   const [tagBusy, setTagBusy] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -30,6 +33,22 @@ export default function Library({ papers, selectedId, config, subQuestions = [],
   const shown = papers.filter((p) => !filter.trim() || `${p.title || ""} ${p.filename || ""} ${p.focus || ""}`.toLowerCase().includes(filter.trim().toLowerCase()));
 
   const pick = (list) => setFiles([...list].filter((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf"));
+
+  const addById = async (toRead) => {
+    if (!idText.trim()) return;
+    setIdBusy(true);
+    try {
+      const r = await api.fromId(idText, toRead);
+      notify(r.message);
+      setIdText("");
+      await onChanged();
+      if (r.id) onSelect(r.id);
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setIdBusy(false);
+    }
+  };
 
   const upload = async (e) => {
     e.preventDefault();
@@ -77,6 +96,30 @@ export default function Library({ papers, selectedId, config, subQuestions = [],
           <Icon name={open ? "x" : "plus"} size={14} /> {open ? "Close" : "Add paper"}
         </button>
       </div>
+
+      {open && findOn && (
+        <form
+          className="upload idform"
+          onSubmit={(e) => {
+            e.preventDefault();
+            addById(false);
+          }}
+        >
+          <div className="inwrap">
+            <label htmlFor="byid">Add by DOI, link or title</label>
+            <input id="byid" type="text" value={idText} placeholder="10.1234/abc, an arXiv link, or a title" onChange={(e) => setIdText(e.target.value)} />
+            <p className="hint">The app looks for the metadata and a free PDF. Without a free PDF, you upload the PDF later.</p>
+          </div>
+          <div className="row">
+            <button className="btn small" disabled={idBusy || !idText.trim()}>
+              {idBusy ? "Looking…" : "Add the paper"}
+            </button>
+            <button type="button" className="btn small ghost" disabled={idBusy || !idText.trim()} onClick={() => addById(true)}>
+              Add to To read
+            </button>
+          </div>
+        </form>
+      )}
 
       {open && (
       <form onSubmit={upload} className="upload">
