@@ -1,0 +1,58 @@
+# Runs all tests on each push and each pull request. All tests use a fake AI: no key and no network call to an AI.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: research-pal/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            research-pal/backend/requirements.txt
+            research-pal/backend/requirements-dev.txt
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pytest -q
+
+  frontend:
+    name: Frontend tests, build and end-to-end tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: research-pal/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            research-pal/backend/requirements.txt
+            research-pal/backend/requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: research-pal/frontend/package-lock.json
+      - run: pip install -r ../backend/requirements.txt -r ../backend/requirements-dev.txt
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: research-pal/frontend/test-results
+          retention-days: 7

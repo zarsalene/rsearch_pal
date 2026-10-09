@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, links, llm, mindmap, pdf, vectors
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, vectors
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -196,6 +196,22 @@ def reset_ai():
     """Go back to the AI settings of the server (.env)."""
     llm.set_choice(None)
     return get_config()
+
+
+class FeaturesIn(BaseModel):
+    features: dict[str, bool]
+
+
+@app.get("/api/features", dependencies=[Depends(auth.require_auth)])
+def get_features():
+    return features.listing()
+
+
+@app.put("/api/features", dependencies=[Depends(auth.require_auth)])
+def put_features(body: FeaturesIn):
+    """Switch features on or off. Data stays: a switch only hides or blocks the feature."""
+    features.set_many(body.features)
+    return features.listing()
 
 
 @app.delete("/api/cache", dependencies=[Depends(auth.require_auth)])
@@ -558,7 +574,7 @@ class ChatIn(BaseModel):
     history: list[dict] = []
 
 
-@app.post("/api/chat", dependencies=[Depends(auth.require_auth)])
+@app.post("/api/chat", dependencies=[Depends(auth.require_auth), Depends(features.require("chat"))])
 def chat_ask(body: ChatIn):
     try:
         return chat.ask(body.question, body.paper_ids, body.history)

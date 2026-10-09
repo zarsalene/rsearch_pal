@@ -96,7 +96,42 @@ function AiChoice({ config, onConfig, notify }) {
   );
 }
 
-export default function Settings({ config, onConfig, onImported, onLogout, notify }) {
+// Each feature has a switch. A switch hides the feature and the server refuses its calls. Your data stays.
+function FeatureSwitches({ features, onFeatures, notify }) {
+  const [busy, setBusy] = useState("");
+  if (!features?.length) return null;
+  const toggle = async (f) => {
+    setBusy(f.name);
+    try {
+      onFeatures(await api.setFeatures({ [f.name]: !f.enabled }));
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <div className="group">
+      <h2>Features</h2>
+      <p className="muted">Switch a feature off if it gives a problem. The rest of the app keeps working. Your data stays.</p>
+      <ul className="switches">
+        {features.map((f) => (
+          <li key={f.name}>
+            <label className="switchrow">
+              <input type="checkbox" role="switch" checked={f.enabled} disabled={busy === f.name} onChange={() => toggle(f)} />
+              <span>
+                <strong>{f.label}</strong>
+                <span className="muted small"> {f.description}</span>
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export default function Settings({ config, features, onConfig, onFeatures, onImported, onLogout, notify }) {
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
   useEffect(() => setQ(config?.thesis_question || ""), [config]);
@@ -165,6 +200,8 @@ export default function Settings({ config, onConfig, onImported, onLogout, notif
       </div>
 
       <AiChoice config={config} onConfig={onConfig} notify={notify} />
+
+      <FeatureSwitches features={features} onFeatures={onFeatures} notify={notify} />
 
       <div className="group">
         <h2>AI and privacy</h2>
