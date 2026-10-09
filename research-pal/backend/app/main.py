@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, project, ste, today, understand, vectors, words
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, game, pdf, project, ste, today, understand, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -30,6 +30,16 @@ app.add_middleware(
 
 
 # ---------- processing ----------
+def game_event(fn, *args):
+    """Give XP for a verified action. A problem in the game must never stop the real work, and a switched-off game gives no XP."""
+    try:
+        if features.is_enabled("game"):
+            return fn(*args)
+    except Exception:
+        log.exception("Game event failed")
+    return False
+
+
 def process_paper(pid: str, fresh: bool = False) -> None:
     """fresh=True asks the AI again. Otherwise the same request gets its saved answer."""
     with PROCESS_LOCK, llm.cache_scope(pid, fresh), llm.ai_context("card", pid):
@@ -52,6 +62,7 @@ def process_paper(pid: str, fresh: bool = False) -> None:
             db.save_card(pid, card)
             vectors.index_card(pid, cards.card_text(card))
             db.update_paper(pid, status="ready", error="", title=card["title"] or p["title"], n_pages=len(pages))
+            game_event(game.check_card, pid)
         except (pdf.PdfError, llm.LLMError) as e:
             db.update_paper(pid, status="error", error=str(e))
         except Exception:
@@ -105,6 +116,7 @@ def process_extra(pid: str, cid: str, fresh: bool = False) -> None:
                 if x["card"] and x["card"].get(keep):
                     card[keep] = x["card"][keep]
             db.update_extra(cid, status="ready", error="", card=card)
+            game_event(game.check_card, pid, cid)
         except (pdf.PdfError, llm.LLMError) as e:
             db.update_extra(cid, status="error", error=str(e))
         except Exception:
@@ -564,6 +576,7 @@ def fill_card(pid: str, body: FillIn):
             latest["fields"][n] = card["fields"][n]
     db.save_card(pid, latest)
     vectors.index_card(pid, cards.card_text(latest))
+    game_event(game.check_card, pid)
     return {"card": latest, "filled": filled, "missing": cards.missing_fields(latest)}
 
 
@@ -581,6 +594,7 @@ def fill_extra_card(pid: str, cid: str, body: FillIn):
         if latest["fields"].get(n, {}).get("status") == "not_found":
             latest["fields"][n] = x["card"]["fields"][n]
     db.update_extra(cid, card=latest)
+    game_event(game.check_card, pid, cid)
     return {"card": latest, "filled": filled, "missing": cards.missing_fields(latest)}
 
 
@@ -836,7 +850,9 @@ def list_wins(limit: int = 5, before: str | None = None):
 @app.post("/api/wins", dependencies=TODAY)
 def add_win(body: WinIn):
     date = run_today(today.clean_date, body.date)
-    return db.win_add(date, run_today(today.clean_text, body.text, today.MAX_WIN_TEXT, "win"))
+    win = db.win_add(date, run_today(today.clean_text, body.text, today.MAX_WIN_TEXT, "win"))
+    game_event(game.check_win, date)  # 2 XP, one time for each day
+    return win
 
 
 @app.delete("/api/wins/{wid}", dependencies=TODAY)
@@ -861,7 +877,9 @@ def focus_start(body: FocusIn):
 
 @app.post("/api/focus/stop", dependencies=TODAY)
 def focus_stop():
-    return run_today(today.stop_focus)
+    session = run_today(today.stop_focus)
+    game_event(game.check_focus, session)  # a session of 20 minutes or more
+    return session
 
 
 @app.get("/api/focus/active", dependencies=TODAY)
@@ -895,7 +913,9 @@ class ExplainIn(BaseModel):
 @app.post("/api/papers/{pid}/explain", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
 def explain_paper(pid: str, body: ExplainIn):
     """The Feynman check. The student explains the paper. The server checks each mark of the AI against the PDF."""
-    return run_understand(pid, "explain", understand.explain, body.text, body.card_id)
+    result = run_understand(pid, "explain", understand.explain, body.text, body.card_id)
+    result["xp_gained"] = game.XP["feynman_pass"] if game_event(game.check_feynman, pid, result["score"]) else 0
+    return result
 
 
 @app.get("/api/papers/{pid}/explanations", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
@@ -949,7 +969,10 @@ def answer_quiz(rid: str, body: AnswerIn):
         raise HTTPException(404, "Question not found.")
     try:
         with llm.cache_scope(item["paper_id"]), llm.ai_context("quiz", item["paper_id"]):
-            return understand.mark_answer(rid, body.answer)
+            result = understand.mark_answer(rid, body.answer)
+            if result["mark"] == "correct":
+                game_event(game.award, "quiz_correct", rid)
+            return result
     except understand.UnderstandError as e:
         raise HTTPException(400, str(e))
     except llm.LLMError as e:
@@ -1020,6 +1043,68 @@ def delete_glossary(gid: str):
     return {"ok": True}
 
 
+# ---------- Game: points, levels, streak, badges, own rewards ----------
+GAME = [Depends(auth.require_auth), Depends(features.require("game"))]
+
+
+@app.get("/api/game", dependencies=GAME)
+def get_game(date: str | None = None, tz: int | None = None):
+    """tz: the offset of the time zone of the student, in minutes (for example 60). It decides which day an XP event belongs to."""
+    if tz is not None:
+        game.set_timezone(tz)
+    game.refresh()
+    return run_today(lambda: game.summary(today.clean_date(date) if date else game.local_date(db.now())))
+
+
+@app.get("/api/game/events", dependencies=GAME)
+def game_events(limit: int = 50):
+    return [{**e, "label": game.ACTION_LABEL.get(e["action"], e["action"])} for e in db.xp_recent(min(max(limit, 1), 500))]
+
+
+class GameSettingsIn(BaseModel):
+    weekend_off: bool
+
+
+@app.put("/api/game/settings", dependencies=GAME)
+def put_game_settings(body: GameSettingsIn):
+    db.set_setting("weekend_off", "1" if body.weekend_off else "0")
+    return {"weekend_off": game.weekend_off()}
+
+
+class RewardIn(BaseModel):
+    text: str
+    condition: str
+
+
+@app.post("/api/rewards", dependencies=GAME)
+def add_reward(body: RewardIn):
+    """Your own reward. Example: "A dinner out" with the condition "level:3". Conditions: level:N, xp:N, streak:N, cards:N."""
+    text = run_today(today.clean_text, body.text, 120, "reward")
+    if not game.parse_condition(body.condition):
+        raise HTTPException(400, "The condition must look like level:3, xp:500, streak:7 or cards:20.")
+    r = db.reward_add(text, body.condition.strip().lower())
+    game.refresh()
+    return db.reward_get(r["id"])
+
+
+@app.post("/api/rewards/{rid}/claim", dependencies=GAME)
+def claim_reward(rid: str):
+    r = db.reward_get(rid)
+    if not r:
+        raise HTTPException(404, "Reward not found.")
+    if not r["earned_at"]:
+        raise HTTPException(400, "You did not earn this reward yet.")
+    db.reward_claim(rid)
+    return db.reward_get(rid)
+
+
+@app.delete("/api/rewards/{rid}", dependencies=GAME)
+def delete_reward(rid: str):
+    if not db.reward_delete(rid):
+        raise HTTPException(404, "Reward not found.")
+    return {"ok": True}
+
+
 # ---------- AI use log ----------
 @app.get("/api/ai-log", dependencies=[Depends(auth.require_auth)])
 def ai_log(limit: int = 100):
@@ -1077,7 +1162,9 @@ def explain_link(body: ExplainIn):
             raise HTTPException(409, "A paper is not ready yet.")
     try:
         with llm.cache_scope("", body.refresh), llm.ai_context("link", f"{body.a},{body.b}"):
-            return links.explain(body.a, body.b, body.refresh)
+            out = links.explain(body.a, body.b, body.refresh)
+        game_event(game.check_link, body.a, body.b, out.get("evidence", []))  # both PDFs must have a verified quote
+        return out
     except chat.ChatError as e:
         raise HTTPException(400, str(e))
     except llm.LLMError as e:
@@ -1105,6 +1192,7 @@ def export():
             "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
             "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
             "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")],
+            "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
             "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list()}
 
 
@@ -1175,6 +1263,26 @@ def import_backup(data: dict, background: BackgroundTasks):
                 db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
         except (KeyError, TypeError, ValueError):
             pass
+    for e in data.get("xp_events") or []:  # points, badges and rewards are part of the backup. The UNIQUE key stops a second row.
+        try:
+            if str(e["id"]).isalnum() and e["action"] in game.ACTION_LABEL:
+                db.xp_restore({"id": str(e["id"]), "time": float(e["time"]), "date": today.clean_date(e["date"]), "action": e["action"], "ref_id": str(e["ref_id"]), "xp": int(e["xp"])})
+        except (KeyError, TypeError, ValueError, today.TodayError):
+            pass
+    for b in data.get("badges") or []:
+        try:
+            if b["code"] in game.BADGES:
+                db.badge_restore(b["code"], float(b["earned_at"]))
+        except (KeyError, TypeError, ValueError):
+            pass
+    for r in data.get("rewards") or []:
+        try:
+            if str(r["id"]).isalnum() and not db.reward_get(str(r["id"])) and game.parse_condition(r["condition"]):
+                db.reward_add(str(r["text"])[:120], str(r["condition"]), str(r["id"]), r.get("earned_at"), bool(r.get("claimed")), float(r.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    if data.get("weekend_off") is not None:
+        db.set_setting("weekend_off", "1" if data["weekend_off"] else "0")
     for g in data.get("goals") or []:  # goals, wins and focus sessions are part of the backup. A row that exists is skipped.
         try:
             if str(g["id"]).isalnum() and not db.goal_get(str(g["id"])) and g.get("kind") in today.GOAL_KINDS:

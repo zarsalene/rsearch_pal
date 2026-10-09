@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
 import FocusTimer from "./FocusTimer.jsx";
+import { tzMinutes } from "./game.js";
 
 // The date of the student, as YYYY-MM-DD. The server can be in another time zone.
 export const localDate = () => new Date().toLocaleDateString("en-CA");
@@ -134,18 +135,20 @@ function Wins({ data, date, onChanged, notify, inputRef }) {
 }
 
 // The home page. One main action is clear. The other blocks are calm and small.
-export default function Today({ papers, onAction, features, notify }) {
+export default function Today({ papers, onAction, gameOn = false, notify }) {
   const [date] = useState(localDate);
   const [data, setData] = useState(null);
+  const [game, setGame] = useState(null);
   const winRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
       setData(await api.today(date));
+      if (gameOn) setGame(await api.game(date, tzMinutes()).catch(() => null));
     } catch (e) {
       notify(e.message);
     }
-  }, [date, notify]);
+  }, [date, notify, gameOn]);
   useEffect(() => {
     load();
   }, [load, papers.length]);
@@ -201,7 +204,32 @@ export default function Today({ papers, onAction, features, notify }) {
       </div>
 
       <div className="today-soon" role="group" aria-label="Coming soon">
-        {["Streak", "Level", "Quest", "Review"].map((n) => (
+        {game ? (
+          <>
+            <div className="soon live" aria-label="Streak">
+              <strong>Streak</strong>
+              <span>
+                {game.streak.current} {game.streak.current === 1 ? "day" : "days"}
+              </span>
+              <span className="small muted">{game.streak.message}</span>
+            </div>
+            <div className="soon live" aria-label="Level">
+              <strong>Level</strong>
+              <span>
+                {game.level.name} · {game.xp} points
+              </span>
+              <span className="small muted">{game.level.next ? `Next: ${game.level.next.name}` : "Last level"}</span>
+            </div>
+          </>
+        ) : (
+          ["Streak", "Level"].map((n) => (
+            <div key={n} className="soon">
+              <strong>{n}</strong>
+              <span className="small muted">Coming soon</span>
+            </div>
+          ))
+        )}
+        {["Quest", "Review"].map((n) => (
           <div key={n} className="soon">
             <strong>{n}</strong>
             <span className="small muted">Coming soon</span>

@@ -1,19 +1,8 @@
 """Sprint 04: the Today page. Goals, wins, focus timer, next best action. No AI call."""
-import pytest
-
 from app import cards, db, today
 from helpers import upload, wait_ready
 
 DAY = "2026-10-09"
-
-
-@pytest.fixture
-def clock(monkeypatch):
-    """A clock that the test controls. clock.t is the time in seconds."""
-    class Clock:
-        t = 1_000_000.0
-    monkeypatch.setattr(db, "now", lambda: Clock.t)
-    return Clock
 
 
 def read(client, h, sample_pdfs, name="a.pdf"):

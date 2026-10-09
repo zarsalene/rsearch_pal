@@ -65,6 +65,7 @@ export function ExplainResult({ result, paperId, notify }) {
         </strong>
         <p className="kindmsg">{result.message}</p>
       </div>
+      {result.xp_gained > 0 && <p className="xpnote">+{result.xp_gained} points. A Feynman check passed. Well done.</p>}
       <h3>Your explanation</h3>
       <ClaimText claims={result.claims} activeId={active} onPick={setActive} />
       <div className="marklegend">

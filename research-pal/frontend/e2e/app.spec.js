@@ -167,6 +167,38 @@ test.describe.serial("Research Pal", () => {
     await expect(page.getByText("1 of 2 answers were correct.")).toBeVisible();
   });
 
+  test("Game: a Feynman pass gives points, and the Journey page shows them", async ({ page }) => {
+    await signIn(page);
+    await page.getByRole("tab", { name: "Understand" }).click();
+    await page.getByLabel("Your explanation").fill("Analysts spend many hours on manual log review. The system uses a hypothesis agent and a validation agent. It reaches a precision of 91.4 percent and a recall of 84.2 percent.");
+    await page.getByRole("button", { name: "Check my explanation" }).click();
+    await expect(page.getByLabel("Score 100 of 100")).toBeVisible();
+    await expect(page.locator(".xpnote")).toContainText("+25 points"); // the server gave the points. The page cannot.
+
+    await page.getByRole("tab", { name: "Journey" }).click();
+    const level = page.getByRole("region", { name: "Level", exact: true });
+    await expect(level).toContainText("Explorer");
+    // earlier tests gave some points too (a quiz answer, a win). The Feynman pass gave 25 of them.
+    const points = Number(((await level.textContent()).match(/(\d+) points/) || [])[1]);
+    expect(points).toBeGreaterThanOrEqual(25);
+    await expect(level).toContainText("1 of 3 Feynman checks passed"); // the way to Reader
+    await expect(page.getByRole("region", { name: "Badges" })).toContainText("First Feynman pass");
+    await expect(page.getByRole("region", { name: "Where your points came from" })).toContainText("A Feynman check passed");
+    await expect(page.getByRole("region", { name: "Streak" })).toContainText("1 day");
+    await expect(page.getByRole("region", { name: "Records" })).toContainText("There is no ranking");
+
+    // an own reward
+    await page.getByLabel("My reward").fill("A coffee");
+    await page.getByLabel("Condition of the reward").fill("xp:20");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.getByRole("button", { name: /You earned it. Claim it/ })).toBeVisible();
+
+    // the Today page shows the level and the streak in its boxes
+    await page.getByRole("tab", { name: "Today", exact: true }).click();
+    await expect(page.getByLabel("Level", { exact: true })).toContainText(/Explorer · \d+ points/);
+    await expect(page.getByLabel("Streak", { exact: true })).toContainText("1 day");
+  });
+
   test("a feature switch hides the Chat tab and brings it back", async ({ page }) => {
     await signIn(page);
     await expect(page.getByRole("tab", { name: "Chat" })).toBeVisible();
