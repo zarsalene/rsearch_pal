@@ -5,6 +5,8 @@ import MindMap from "./MindMap.jsx";
 import TagChips from "./TagChips.jsx";
 import SimpleText from "./SimpleText.jsx";
 import Understand from "./Understand.jsx";
+import MetaBlock from "./MetaBlock.jsx";
+import { citeStyle } from "./Write.jsx";
 
 const ORDER = [
   ["question", "My question"],
@@ -120,7 +122,16 @@ function Summary({ card, paperId, cardId }) {
   );
 }
 
-function Field({ name, label, f, paperId, cardId = "", hasPdf, onSave, notify, bare, onFill, filling }) {
+function Field({ name, label, f, paperId, cardId = "", hasPdf, onSave, notify, bare, onFill, filling, citeOn }) {
+  const copyCite = async (page) => {
+    try {
+      const c = await api.cite(paperId, page, citeStyle());
+      await navigator.clipboard.writeText(c.text);
+      notify(`Copied: ${c.text}${c.complete ? "" : " (check the metadata of the paper)"}`);
+    } catch (e) {
+      notify(e.message);
+    }
+  };
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [showDraft, setShowDraft] = useState(false);
@@ -203,6 +214,11 @@ function Field({ name, label, f, paperId, cardId = "", hasPdf, onSave, notify, b
                   )
                 ) : (
                   <span className="chip bad">Quote not found in the PDF</span>
+                )}
+                {e.verified && citeOn && (
+                  <button className="link citebtn" onClick={() => copyCite(e.page)} title="Copy a citation with this page">
+                    Copy citation
+                  </button>
                 )}
               </blockquote>
             ))}
@@ -493,6 +509,10 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
         )}
       </header>
 
+      {parts.cite && !cid && paper.status === "ready" && (
+        <MetaBlock paper={paper} onChanged={async () => { await load(); onChanged(); }} notify={notify} />
+      )}
+
       {inProgress && (
         <div className="progress" role="status">
           <span className="dot-anim" />
@@ -553,7 +573,7 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
                 <Icon name="target" size={14} /> Focus
               </div>
               <h2 className="focus-topic">{card.focus}</h2>
-              <Field name="focus" label="Focus" f={card.fields.focus} paperId={id} cardId={cid} hasPdf={paper.has_pdf} onSave={save} notify={notify} bare onFill={fill} filling={fillBusy} />
+              <Field name="focus" label="Focus" f={card.fields.focus} citeOn={parts.cite} paperId={id} cardId={cid} hasPdf={paper.has_pdf} onSave={save} notify={notify} bare onFill={fill} filling={fillBusy} />
             </section>
           )}
           <div className="fields">
@@ -562,7 +582,7 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
               if (!f) return null;
               return (
                 <div key={k}>
-                  <Field name={k} label={label} f={f} paperId={id} cardId={cid} hasPdf={paper.has_pdf} onSave={save} notify={notify} onFill={fill} filling={fillBusy} />
+                  <Field name={k} label={label} f={f} citeOn={parts.cite} paperId={id} cardId={cid} hasPdf={paper.has_pdf} onSave={save} notify={notify} onFill={fill} filling={fillBusy} />
                   {k === "limitation" && card.inferred_limitations && (
                     <p className="opinion">
                       <strong>AI opinion, not from the paper:</strong> {card.inferred_limitations}

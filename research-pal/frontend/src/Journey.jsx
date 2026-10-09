@@ -4,6 +4,8 @@ import { animationsOn, levelPercent, setAnimations, tzMinutes } from "./game.js"
 import ExpeditionMap from "./ExpeditionMap.jsx";
 import { QuestLog } from "./Quests.jsx";
 import { Icon } from "./icons.jsx";
+import AvatarCard from "./Avatar3D.jsx";
+import DuckIsland from "./Play.jsx";
 
 const REWARD_HELP = "Conditions: level:3 (a level, by number), xp:500, streak:7 or cards:20.";
 const COMPARE = [
@@ -160,9 +162,10 @@ function Rewards({ rewards, onChanged, notify }) {
 }
 
 // Level, streak, badges, records and your own rewards. The points come from work that the server checked.
-export default function Journey({ notify, mapOn = false, gameOn = true, questsOn = false, onGo = () => {} }) {
+export default function Journey({ notify, mapOn = false, gameOn = true, questsOn = false, avatarOn = false, playOn = false, onGo = () => {} }) {
   const [game, setGame] = useState(null);
   const [anim, setAnim] = useState(animationsOn);
+  const [playOpen, setPlayOpen] = useState(false);
   const load = useCallback(async () => {
     if (!gameOn) return;
     try {
@@ -200,8 +203,29 @@ export default function Journey({ notify, mapOn = false, gameOn = true, questsOn
       {questsOn && <QuestLog notify={notify} />}
       <div className="today-grid">
         <LevelCard game={game} />
+        {avatarOn && <AvatarCard level={game.level.index} />}
         <StreakCard streak={game.streak} onWeekend={weekend} />
       </div>
+      {playOn && (
+        <section className="today-block" aria-label="Play">
+          <h2>Play</h2>
+          {playOpen ? (
+            <>
+              <DuckIsland notify={notify} />
+              <button className="link" onClick={() => setPlayOpen(false)}>
+                Close Duck Island
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="small muted">A small island with the Duck. Mini-games with quotes from your papers, coins and a shop. It is only for fun. It gives no points.</p>
+              <button className="btn" onClick={() => setPlayOpen(true)}>
+                Open Duck Island
+              </button>
+            </>
+          )}
+        </section>
+      )}
 
       <section className="today-block" aria-label="Badges">
         <h2>Badges</h2>

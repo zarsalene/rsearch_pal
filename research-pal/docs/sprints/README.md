@@ -36,6 +36,8 @@ Each sprint is a **small separate project**. It has its own goal, its own develo
 | [10](sprint-10-find-papers.md) | Add by DOI, import, triage | E1, E3, E4 | 5. Papers | 2 |
 | [11](sprint-11-suggest-and-plan.md) | Suggestions, timeline, weekly review, journal | E2, F1, F2, F4 | 5. Plan | 2 |
 | [12](sprint-12-supervisor-and-release.md) | Supervisor pack, email, release | G1, G2 | 6. People | 2 |
+| [13](sprint-13-avatar.md) | 3D avatar (level look) | Owner request | 3. Motivation | 1 |
+| [14](sprint-14-play.md) | Real game: Duck Island | Owner request | 3. Motivation | 2 |
 
 **Total:** about 25 weeks (6 months) for one developer.
 

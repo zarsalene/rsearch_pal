@@ -186,6 +186,14 @@ test.describe.serial("Research Pal", () => {
     await expect(page.getByRole("region", { name: "Where your points came from" })).toContainText("A Feynman check passed");
     await expect(page.getByRole("region", { name: "Streak" })).toContainText("1 day");
     await expect(page.getByRole("region", { name: "Records" })).toContainText("There is no ranking");
+    // the avatar: the items of the level, the next item, and a button to hide it
+    const avatar = page.getByRole("region", { name: "Avatar", exact: true });
+    await expect(avatar).toContainText("Items: Backpack.");
+    await expect(avatar).toContainText("At the next level you get: Glasses and a book.");
+    await expect(avatar.getByRole("img")).toBeVisible();
+    await avatar.getByRole("button", { name: "Hide avatar" }).click();
+    await expect(avatar).toContainText("The avatar is hidden.");
+    await avatar.getByRole("button", { name: "Show avatar" }).click();
 
     // an own reward
     await page.getByLabel("My reward").fill("A coffee");
@@ -379,6 +387,91 @@ test.describe.serial("Research Pal", () => {
     await expect(page.getByRole("tab", { name: "Thesis" })).toBeVisible();
     await expect(page.locator(".thesisbar")).toContainText("Multi-agent threat hunting"); // the data stayed
   });
+
+  test("Write: metadata, BibTeX, outline, a section with 2 quotes and their citations, autosave, Markdown export", async ({ page }) => {
+  await signIn(page);
+  // the metadata: the server read them from the PDF and checked them
+  await page.locator(".pitem", { hasText: "AUTOMA" }).click();
+  await page.getByRole("button", { name: "Fill from the PDF" }).click();
+  await expect(page.getByRole("region", { name: "Metadata of the paper" })).toContainText("Smith, Jane; Wei, Li");
+  await expect(page.getByRole("region", { name: "Metadata of the paper" })).toContainText("2024");
+  // BibTeX export
+  const bib = page.waitForEvent("download");
+  await page.getByRole("button", { name: "BibTeX" }).click();
+  expect((await bib).suggestedFilename()).toBe("research-pal.bib");
+
+  // the outline, one section for each sub-question
+  await page.getByRole("tab", { name: "Write" }).click();
+  await page.getByRole("button", { name: "Make the outline" }).click();
+  const sections = page.locator(".outline .osec");
+  await expect(sections.first()).toBeVisible();
+  const n = await sections.count();
+  let found = false;
+  for (let i = 0; i < n && !found; i++) {
+    await sections.nth(i).click();
+    found = (await page.getByRole("button", { name: /Insert quote/ }).count()) >= 2;
+  }
+  expect(found).toBe(true); // a section has cards with checked quotes
+
+  await page.getByLabel("Your text").fill("Two papers study this question.\n");
+  // wait for the save that has both quotes. The older "Saved" note of the first save is not enough: it made this test flaky.
+  const saved = page.waitForResponse((r) => r.url().includes("/api/review-doc/sections/") && r.request().method() === "PUT" && (r.request().postData() || "").split("\\n> ").length > 2);
+  await page.getByRole("button", { name: /Insert quote/ }).nth(0).click();
+  await page.getByRole("button", { name: /Insert quote/ }).nth(1).click();
+  const area = page.getByLabel("Your text");
+  const value = await area.inputValue();
+  expect(value.split("\n").filter((l) => l.startsWith("> "))).toHaveLength(2);
+  expect(value).toMatch(/\(Smith & Wei, 2024, p\. \d\)/); // the citation with the page
+  await saved; // autosave
+
+  await page.reload(); // the text is not lost
+  await page.getByRole("tab", { name: "Write" }).click();
+  await page.locator(".outline .osec", { hasText: /\d+ words/ }).first().click();
+  const kept = await page.locator(".outline li.sel .osec").count();
+  expect(kept).toBe(1);
+
+  // export Markdown with the citations and the references
+  const md = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Export Markdown/ }).click();
+  const file = await (await md).path();
+  const text = (await import("node:fs")).readFileSync(file, "utf8");
+  expect(text).toContain("# Literature review");
+  expect(text).toContain("Two papers study this question.");
+  expect(text).toMatch(/\(Smith & Wei, 2024, p\. \d\)/);
+  expect(text).toContain("## References");
+  expect(text).toContain("Smith, J., & Wei, L. (2024).");
+});
+
+  test("Duck Island: play Quote Hunt, see the sources, win coins, buy an item and place it; play gives no points", async ({ page }) => {
+    await signIn(page, true);
+    await page.getByRole("tab", { name: "Journey" }).click();
+    const level = page.getByRole("region", { name: "Level", exact: true });
+    const points = async () => Number(((await level.textContent()).match(/(\d+) points/) || [])[1]);
+    const before = await points();
+    await page.getByRole("button", { name: "Open Duck Island" }).click();
+    const island = page.getByRole("region", { name: "Duck Island" });
+    await expect(island).toContainText("Play gives no points and no levels");
+    await island.getByRole("button", { name: /Go to Quote Hunt/ }).click();
+    const round = page.getByRole("region", { name: "Quote Hunt" });
+    const result = page.getByRole("region", { name: "Round result" });
+    for (let i = 0; i < 5; i++) {
+      await expect(round.or(result).first()).toBeVisible();
+      if (await result.isVisible()) break;
+      await round.locator(".playoptions button").first().click();
+    }
+    await expect(result).toContainText("right");
+    await expect(result).toContainText("page"); // each source shows its page and its quote
+    await result.getByRole("button", { name: "Back to the island" }).click();
+    // the shop: the coins of work and play pay for a flower (5 coins)
+    await island.getByRole("button", { name: /Go to the Shop/ }).click();
+    await island.getByRole("button", { name: "Buy Flower for 5 coins" }).click();
+    await expect(island.getByText("You have it.")).toBeVisible();
+    await island.getByRole("button", { name: "Close the shop" }).click();
+    await island.getByRole("button", { name: "Decorate" }).click();
+    await island.getByRole("button", { name: "Place at the Duck" }).click();
+    expect(await points()).toBe(before); // play and shop gave no points
+  });
+
 });
 
 // Select one word inside an element, like a student does with the mouse. Then the page gets the mouseup event.

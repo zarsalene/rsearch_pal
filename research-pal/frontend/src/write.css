@@ -1,0 +1,25 @@
+/* ---- Citations and the literature review builder (Sprint 08) ---- */
+.metablock{background:var(--surface);border:var(--edge);border-radius:var(--r-md);padding:10px 16px;margin:10px 0 14px}
+.metalist{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 18px;margin:0 0 8px}
+.metalist dt{font-size:.74rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.metalist dd{margin:0;font-size:.92rem;overflow-wrap:anywhere}
+.metaform{display:grid;gap:8px}
+.metaform label{display:grid;gap:2px;font-size:.82rem;color:var(--muted)}
+.citebtn{margin-left:8px;font-size:.78rem}
+.exportrow{margin:0 0 8px;gap:8px}
+.write-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.write-head h1{margin:0;flex:1;min-width:200px}
+.write-grid{display:grid;grid-template-columns:minmax(180px,230px) minmax(0,1fr) minmax(220px,320px);gap:18px;align-items:start}
+@media (max-width:1100px){.write-grid{grid-template-columns:1fr}}
+.outline ol{list-style:none;margin:10px 0 0;padding:0}
+.outline li{display:flex;align-items:center;gap:4px;border-radius:var(--r-md);padding:2px}
+.outline li.sel{background:var(--accent-soft)}
+.osec{flex:1;display:grid;text-align:left;background:none;border:0;padding:8px 10px;cursor:pointer;color:var(--ink);font-weight:600}
+.omove{display:inline-flex}
+.omove .down{transform:rotate(90deg)}
+.editor textarea{width:100%;font-family:var(--serif);font-size:1.05rem;line-height:1.6;padding:14px}
+.srcpanel{background:var(--surface);border:var(--edge);border-radius:var(--r-lg);padding:12px 14px;max-height:80vh;overflow:auto}
+.srcpanel h3{margin:0 0 8px;font-size:1rem}
+.srcgroup h4{margin:12px 0 4px;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.srccard{margin-bottom:10px}
+.srccard blockquote{display:grid;gap:4px;margin:6px 0;padding:8px 10px;background:var(--surface-2);border-radius:var(--r-sm);font-size:.9rem}

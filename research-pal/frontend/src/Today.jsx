@@ -54,7 +54,15 @@ function Goals({ data, date, onChanged, notify }) {
           <li key={g.id} className={g.done ? "done" : ""}>
             <label>
               <input type="checkbox" checked={g.done} disabled={busy} onChange={() => run(() => api.updateGoal(g.id, { done: !g.done }))} />
-              <span>{g.text}</span>
+              <span>
+                {g.text}
+                {g.progress != null && g.target > 0 && (
+                  <span className="small muted">
+                    {" "}
+                    ({g.progress} of {g.target} words written in the review)
+                  </span>
+                )}
+              </span>
             </label>
             <button className="iconbtn" onClick={() => run(() => api.deleteGoal(g.id))} aria-label={`Delete the goal: ${g.text}`} title="Delete">
               <Icon name="x" size={14} />

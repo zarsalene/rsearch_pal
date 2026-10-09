@@ -15,7 +15,7 @@ function statusText(p) {
 // The sub-questions of a paper: all its cards together, in the order of the sub-questions.
 const paperTagIds = (p, subQuestions) => subQuestions.filter((s) => Object.values(p.tags || {}).some((ids) => ids.includes(s.id))).map((s) => s.id);
 
-export default function Library({ papers, selectedId, config, subQuestions = [], onSelect, onChanged, notify }) {
+export default function Library({ papers, selectedId, config, subQuestions = [], onSelect, onChanged, notify, citeOn = false }) {
   const fileRef = useRef(null);
   const [tagBusy, setTagBusy] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -124,6 +124,16 @@ export default function Library({ papers, selectedId, config, subQuestions = [],
           <Icon name="search" size={14} />
           <input type="text" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter papers…" aria-label="Filter papers" />
         </label>
+      )}
+      {citeOn && papers.length > 0 && (
+        <div className="row exportrow">
+          <button className="btn small ghost" onClick={() => api.download("/api/export/bibtex", "research-pal.bib").catch((e) => notify(e.message))}>
+            <Icon name="download" size={13} /> BibTeX
+          </button>
+          <button className="btn small ghost" onClick={() => api.download("/api/export/ris", "research-pal.ris").catch((e) => notify(e.message))}>
+            <Icon name="download" size={13} /> RIS
+          </button>
+        </div>
       )}
       <ul className="plist">
         {shown.map((p) => (

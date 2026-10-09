@@ -164,6 +164,12 @@ export const api = {
   reviewGarden: (date, tz) => request(`/api/review/garden?date=${date}&tz=${tz}`),
   rateReview: (id, rating, date) => request(`/api/review/${id}`, { method: "POST", json: { rating, date } }),
   journeyMap: () => request("/api/journey/map"),
+  // Duck Island. The server makes the questions, keeps the answers and the coins.
+  play: () => request("/api/play"),
+  newRound: (game) => request("/api/play/rounds", { method: "POST", json: { game } }),
+  finishRound: (id, answers) => request(`/api/play/rounds/${id}/finish`, { method: "POST", json: { answers } }),
+  buyItem: (code) => request("/api/play/buy", { method: "POST", json: { code } }),
+  placeItem: (code, x, y) => request(`/api/play/items/${code}`, { method: "PUT", json: { x, y } }),
   // Quests, bosses, Duck. The server checks the conditions. The page only shows them.
   quests: (date, tz) => request(`/api/quests?date=${date}&tz=${tz}`),
   chooseQuest: (code, date) => request(`/api/quests/${code}/choose?date=${date}`, { method: "POST" }),
@@ -171,6 +177,26 @@ export const api = {
   setBoss: (id, boss) => request(`/api/papers/${id}/boss`, { method: "POST", json: { boss } }),
   bosses: () => request("/api/bosses"),
   companion: (event, seed = "") => request(`/api/companion?event=${event}&seed=${encodeURIComponent(seed)}`),
+  // Citations and the literature review. The server checks the metadata against the PDF. You write the text.
+  extractMeta: (id) => request(`/api/papers/${id}/meta/extract`, { method: "POST" }),
+  editMeta: (id, meta) => request(`/api/papers/${id}/meta`, { method: "PUT", json: meta }),
+  cite: (id, page, style) => request(`/api/papers/${id}/cite?page=${page || ""}&style=${style}`),
+  reviewDoc: (style) => request(`/api/review-doc?style=${style}`),
+  makeOutline: () => request("/api/review-doc/outline", { method: "POST" }),
+  saveSection: (id, body) => request(`/api/review-doc/sections/${id}`, { method: "PUT", json: body }),
+  addSection: (heading) => request("/api/review-doc/sections", { method: "POST", json: { heading } }),
+  deleteSection: (id) => request(`/api/review-doc/sections/${id}`, { method: "DELETE" }),
+  orderSections: (ids) => request("/api/review-doc/order", { method: "PUT", json: { ids } }),
+  // Save a file that the server makes (BibTeX, RIS, Markdown, Word)
+  async download(path, filename) {
+    const res = await request(path, { raw: true });
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
   features: () => request("/api/features"),
   setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),

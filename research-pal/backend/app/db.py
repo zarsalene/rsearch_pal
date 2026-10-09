@@ -69,6 +69,16 @@ CREATE TABLE IF NOT EXISTS rewards(
 CREATE TABLE IF NOT EXISTS ai_log(
   id INTEGER PRIMARY KEY AUTOINCREMENT, time REAL, feature TEXT, paper_id TEXT, provider TEXT, model TEXT);
 
+CREATE TABLE IF NOT EXISTS review_doc(
+  id TEXT PRIMARY KEY, title TEXT, updated_at REAL);
+CREATE TABLE IF NOT EXISTS review_sections(
+  id TEXT PRIMARY KEY, doc_id TEXT, position INTEGER, heading TEXT, sub_question_id TEXT DEFAULT '', text TEXT DEFAULT '', updated_at REAL);
+CREATE TABLE IF NOT EXISTS writing_log(
+  id TEXT PRIMARY KEY, date TEXT, section_id TEXT, delta INTEGER, time REAL);
+CREATE TABLE IF NOT EXISTS play_rounds(
+  id TEXT PRIMARY KEY, game TEXT, questions_json TEXT, created_at REAL, date TEXT, finished INTEGER DEFAULT 0, score INTEGER DEFAULT 0, coins INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS play_items(
+  code TEXT PRIMARY KEY, bought_at REAL, x INTEGER DEFAULT -1, y INTEGER DEFAULT -1);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS llm_cache(key TEXT PRIMARY KEY, tag TEXT, provider TEXT, model TEXT, response TEXT, created_at REAL);
 
@@ -77,7 +87,9 @@ CREATE TABLE IF NOT EXISTS llm_cache(key TEXT PRIMARY KEY, tag TEXT, provider TE
 # Columns that older SQLite databases get later (Postgres has them from the start, see PG_EXTRA).
 _REVIEW_COLUMNS = (("due", "REAL"), ("stability", "REAL"), ("difficulty", "REAL"), ("reps", "INTEGER DEFAULT 0"), ("lapses", "INTEGER DEFAULT 0"),
                    ("last_review", "REAL"), ("fsrs_json", "TEXT"))
-_PAPER_COLUMNS = (("is_boss", "INTEGER DEFAULT 0"), ("boss_defeated_at", "REAL"), ("focus", "TEXT DEFAULT ''"))
+_PAPER_COLUMNS = (("is_boss", "INTEGER DEFAULT 0"), ("boss_defeated_at", "REAL"), ("focus", "TEXT DEFAULT ''"),
+                  ("authors", "TEXT DEFAULT '[]'"), ("year", "TEXT DEFAULT ''"), ("venue", "TEXT DEFAULT ''"), ("doi", "TEXT DEFAULT ''"),
+                  ("cite_key", "TEXT DEFAULT ''"), ("meta_check", "TEXT DEFAULT '[]'"), ("meta_source", "TEXT DEFAULT ''"))
 
 
 def _pg_ddl() -> str:
@@ -599,6 +611,79 @@ def coverage() -> dict:
         total = c.execute("SELECT COUNT(*) AS n FROM papers").fetchone()["n"]
         tagged = c.execute("SELECT COUNT(DISTINCT paper_id) AS n FROM paper_tags").fetchone()["n"]
     return {"sub_questions": [dict(r) for r in rows], "papers": total, "untagged": total - tagged}
+# ---------- literature review: one document, sections, the words of each day (Sprint 08) ----------
+def review_doc() -> dict:
+    with conn() as c:
+        r = c.execute("SELECT * FROM review_doc ORDER BY rowid LIMIT 1").fetchone()
+        if not r:
+            c.execute("INSERT INTO review_doc(id,title,updated_at) VALUES(?,?,?)", (new_id(), "Literature review", now()))
+            r = c.execute("SELECT * FROM review_doc ORDER BY rowid LIMIT 1").fetchone()
+    return dict(r)
+
+
+def review_doc_title(title: str) -> None:
+    d = review_doc()
+    with conn() as c:
+        c.execute("UPDATE review_doc SET title=?, updated_at=? WHERE id=?", (title, now(), d["id"]))
+
+
+def review_sections(doc_id: str) -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM review_sections WHERE doc_id=? ORDER BY position, rowid", (doc_id,))]
+
+
+def review_section_get(sid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM review_sections WHERE id=?", (sid,)).fetchone()
+    return dict(r) if r else None
+
+
+def review_section_add(doc_id: str, heading: str, sub_question_id: str = "", text: str = "", sid: str | None = None) -> dict:
+    sid = sid or new_id()
+    with conn() as c:
+        n = c.execute("SELECT COUNT(*) AS n FROM review_sections WHERE doc_id=?", (doc_id,)).fetchone()["n"]
+        c.execute("INSERT INTO review_sections(id,doc_id,position,heading,sub_question_id,text,updated_at) VALUES(?,?,?,?,?,?,?)", (sid, doc_id, n, heading, sub_question_id, text, now()))
+    return review_section_get(sid)
+
+
+def review_section_update(sid: str, **fields) -> None:
+    allowed = {k: v for k, v in fields.items() if k in ("text", "heading")}
+    if allowed:
+        with conn() as c:
+            c.execute(f"UPDATE review_sections SET {', '.join(f'{k}=?' for k in allowed)}, updated_at=? WHERE id=?", (*allowed.values(), now(), sid))
+
+
+def review_section_delete(sid: str) -> bool:
+    with conn() as c:
+        return c.execute("DELETE FROM review_sections WHERE id=?", (sid,)).rowcount > 0
+
+
+def review_sections_order(doc_id: str, ids: list[str]) -> None:
+    with conn() as c:
+        have = [r["id"] for r in c.execute("SELECT id FROM review_sections WHERE doc_id=? ORDER BY position, rowid", (doc_id,))]
+        final = [i for i in ids if i in have] + [i for i in have if i not in ids]
+        c.executemany("UPDATE review_sections SET position=? WHERE id=?", [(n, i) for n, i in enumerate(final)])
+
+
+def sections_written(min_words: int) -> int:
+    """Sections with at least this many words of the student (quote lines do not count)."""
+    n = 0
+    for s in review_sections(review_doc()["id"]):
+        if sum(len(line.split()) for line in (s["text"] or "").splitlines() if not line.lstrip().startswith(">")) >= min_words:
+            n += 1
+    return n
+
+
+def writing_log_add(date: str, section_id: str, delta: int) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO writing_log(id,date,section_id,delta,time) VALUES(?,?,?,?,?)", (new_id(), date, section_id, delta, now()))
+
+
+def words_on(date: str) -> int:
+    with conn() as c:
+        return c.execute("SELECT COALESCE(SUM(delta),0) AS n FROM writing_log WHERE date=?", (date,)).fetchone()["n"]
+
+
 # ---------- quests, bosses, activity (Sprint 07) ----------
 def quests_week(week: str) -> list[dict]:
     with conn() as c:
@@ -773,9 +858,11 @@ def badge_restore(code: str, when: float) -> None:
 
 # ---------- goals, wins and focus sessions (the Today page) ----------
 def goals_list(date: str) -> list[dict]:
+    """The goals of one day. A goal of the kind "words" shows the words that you wrote in the literature review today."""
     with conn() as c:
         rows = c.execute("SELECT * FROM goals WHERE date=? ORDER BY created_at, rowid", (date,)).fetchall()
-    return [{**dict(r), "done": bool(r["done"])} for r in rows]
+    words = words_on(date) if any(r["kind"] == "words" for r in rows) else 0
+    return [{**dict(r), "done": bool(r["done"]), "progress": words if r["kind"] == "words" else None} for r in rows]
 
 
 def goal_add(date: str, text: str, kind: str, target: int, gid: str | None = None, done: bool = False, created_at: float | None = None) -> dict:
@@ -1079,3 +1166,59 @@ def set_setting(key: str, value: str) -> None:
     _ensure_settings_table()
     with conn() as c:
         c.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
+
+
+# ---------- Duck Island (Sprint 14): rounds of the mini-games and the items that the student bought ----------
+def play_round_add(game: str, questions: list[dict], date: str, rid: str | None = None) -> str:
+    rid = rid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO play_rounds(id,game,questions_json,created_at,date) VALUES(?,?,?,?,?)", (rid, game, json.dumps(questions, ensure_ascii=False), now(), date))
+    return rid
+
+
+def play_round_get(rid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM play_rounds WHERE id=?", (rid,)).fetchone()
+    return {**dict(r), "questions": json.loads(r["questions_json"])} if r else None
+
+
+def play_round_finish(rid: str, score: int, coins: int) -> bool:
+    """False if the round is finished already. The table update is the lock: a round pays one time only."""
+    with conn() as c:
+        return c.execute("UPDATE play_rounds SET finished=1, score=?, coins=? WHERE id=? AND finished=0", (score, coins, rid)).rowcount > 0
+
+
+def play_rounds_all() -> list[dict]:
+    with conn() as c:
+        return [{**dict(r), "questions": json.loads(r["questions_json"])} for r in c.execute("SELECT * FROM play_rounds ORDER BY created_at")]
+
+
+def play_coins_on(date: str) -> int:
+    with conn() as c:
+        return c.execute("SELECT COALESCE(SUM(coins),0) AS n FROM play_rounds WHERE finished=1 AND date=?", (date,)).fetchone()["n"]
+
+
+def play_coins_total() -> int:
+    with conn() as c:
+        return c.execute("SELECT COALESCE(SUM(coins),0) AS n FROM play_rounds WHERE finished=1").fetchone()["n"]
+
+
+def play_items_list() -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM play_items ORDER BY bought_at")]
+
+
+def play_item_buy(code: str, when: float | None = None, x: int = -1, y: int = -1) -> bool:
+    with conn() as c:
+        return c.execute("INSERT OR IGNORE INTO play_items(code,bought_at,x,y) VALUES(?,?,?,?)", (code, when or now(), x, y)).rowcount > 0
+
+
+def play_item_place(code: str, x: int, y: int) -> None:
+    with conn() as c:
+        c.execute("UPDATE play_items SET x=?, y=? WHERE code=?", (x, y, code))
+
+
+def play_review_material() -> list[dict]:
+    """Quiz questions and glossary words from the papers: the rows that have a quote."""
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM review_items WHERE quote != '' AND kind IN ('quiz','glossary') ORDER BY created_at, id")]

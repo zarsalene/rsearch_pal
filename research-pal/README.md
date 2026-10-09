@@ -167,6 +167,49 @@ A region at 0% says **Not started** and gives a kind first step. There is no bla
 - **Duck:** in the Understand tab, the field says "Explain it to Duck". Duck shows a short, kind message after your explanation, a boss victory or a quiz. The texts are fixed. There is no AI. Click **Hide Duck**, or use the switch in Settings → Features.
 - The switches **Weekly quests and boss fights** and **Duck companion** turn these parts off. The backup file holds your quests and your bosses.
 
+## 3D avatar
+
+The Journey page shows a small 3D character. It shows your level. Each new level adds one item: a backpack, glasses and a book, a magnifying glass, a rope with a knot, a pen and a scroll, and a doctor cap with a gold star.
+
+- Turn the character with the mouse or the finger.
+- The avatar never gets sad. A lost streak changes nothing. The app never takes an item away.
+- Click **Hide avatar** to hide it. The browser keeps your choice. You can also switch the feature off in **Settings → Features**.
+- If your browser cannot show 3D, you see a flat picture with the same items.
+- The turning stops when you switch animations off or when your system asks for less motion.
+
+## Duck Island: a game to play
+
+On the Journey page, open **Duck Island**. It is a small game. It is only for fun.
+
+- **Walk:** use the arrow keys, W A S D, or click on the island. The buttons under the picture do the same.
+- **Mini-games:** **Quote Hunt** shows a quote from your papers. You choose the paper. **Word Match** shows a word from your glossary. You choose the meaning. A round has up to 5 questions. After the round, you see the source of each question: title, page and quote.
+- **Coins:** you win coins from the games (up to 15 each day) and from your real work (1 coin for each 5 points). Use coins in the **Shop** for items. Then **Decorate** the island: walk the Duck to a free tile and press **Place at the Duck**.
+- **No points:** play never gives points, levels or badges. Only real work gives them.
+- **Only checked material:** the games use only quotes that the app checked in the PDF text.
+- **No guilt:** no timer, no lives, nothing is lost. You can stop a round at any time. If the coins of today are full, you can still play for fun.
+- You can switch the feature off in **Settings → Features**.
+
+## Citations and the literature review builder
+
+**Metadata.** On a card, the block **Metadata** shows the authors, the year, the venue and the DOI of the paper. Click **Fill from the PDF**.
+- The DOI comes from a rule: the server looks for a DOI in the first pages.
+- The AI proposes the authors, the year and the venue. The server keeps a value **only if the PDF has it**. A year that is not on the first page is not saved. A field that the server could not check shows **Check**.
+- You can edit each field. A field that you wrote stays, also after a new reading.
+
+**Citations.** On each checked quote of a card, click **Copy citation**. You get a citation with the page, for example `(Smith et al., 2024, p. 3)` (APA) or `[2, p. 3]` (IEEE). If the author or the year is missing, the app says so.
+- In the library, click **BibTeX** or **RIS** to export all papers. You can import the files in Zotero.
+
+**Write tab.** The literature review builder has three parts:
+- **Outline (left):** click **Make the outline**. You get one section for each sub-question. The outline has only headings. You can move, add and delete sections.
+- **Editor (middle):** you write the text. The app saves it after each short pause. If the tab closes too fast, the browser keeps a draft, and it comes back. A line that starts with `>` is a quote. It does not count as a word that you wrote.
+- **Cards and quotes (right):** the cards that carry the tag of the sub-question, grouped by link type (same method, same data ...). Each quote is a quote that the server checked. Click **Insert** to put it in your text with its citation and page.
+- If you change a quote by hand, the editor says that it is not in your PDFs.
+- **Export:** Markdown or Word, with a list of references (APA or IEEE).
+- The words that you write give progress to the daily goal of the kind "words". A section of 300 words or more counts for the level **Author**.
+- The AI writes no text of your review.
+
+The switches **Citations and metadata**, **Literature review builder** in Settings → Features turn these parts off. The backup file holds the metadata and your review.
+
 ## AI use log
 
 The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.
@@ -302,7 +345,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights** and **Duck companion**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **3D avatar** and **Duck Island**.
 
 ## Later (your list)
 
