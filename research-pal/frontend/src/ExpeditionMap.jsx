@@ -55,7 +55,7 @@ export function MapView({ map, onGo }) {
           <li key={r.code}>
             <button className={"regionbtn " + r.state + (open === r.code ? " on" : "")} aria-pressed={open === r.code} onClick={() => setOpen(open === r.code ? null : r.code)}>
               <span className="rn">{r.name}</span>
-              <span className="bar" aria-hidden="true">
+              <span className="pbar" aria-hidden="true">
                 <span style={{ width: r.percent + "%" }} />
               </span>
               <span className="small muted">

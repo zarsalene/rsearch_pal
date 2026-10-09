@@ -31,7 +31,7 @@ export function LevelCard({ game }) {
       </ol>
       {next ? (
         <>
-          <div className="bar" role="progressbar" aria-label={`Points to ${next.name}`} aria-valuenow={xp} aria-valuemin={level.floor} aria-valuemax={next.xp_total}>
+          <div className="pbar" role="progressbar" aria-label={`Points to ${next.name}`} aria-valuenow={xp} aria-valuemin={level.floor} aria-valuemax={next.xp_total}>
             <span style={{ width: levelPercent(xp, level.floor, next.xp_total) + "%" }} />
           </div>
           <p className="small">

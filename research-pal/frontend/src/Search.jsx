@@ -49,7 +49,7 @@ export default function Search({ onOpenCard, notify }) {
               <strong>{r.title}</strong>
               <span className="chip">p. {r.page}</span>
               <span className="match" title={`${Math.round(r.score * 100)}% match`}>
-                <span className="bar" style={{ width: Math.max(8, Math.min(100, Math.round(r.score * 100))) + "%" }} />
+                <span className="pbar" style={{ width: Math.max(8, Math.min(100, Math.round(r.score * 100))) + "%" }} />
               </span>
               <span className="muted small">{Math.round(r.score * 100)}% match</span>
             </div>
