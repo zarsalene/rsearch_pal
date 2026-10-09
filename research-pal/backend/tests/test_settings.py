@@ -23,7 +23,7 @@ def test_the_student_chooses_the_ai(client, auth_headers):
     assert client.put("/api/ai", headers=h, json={"primary": "nope"}).status_code == 400
     assert client.put("/api/ai", headers=h, json={"primary": "groq", "models": {"groq": "bad model!"}}).status_code == 400
     cfg = client.put("/api/ai", headers=h, json={"primary": "groq", "fallbacks": ["gemini", "groq"], "models": {"groq": "openai/gpt-oss-20b"}}).json()
-    assert cfg["ai_choice"] == {"primary": "groq", "fallbacks": ["gemini"], "models": {"groq": "openai/gpt-oss-20b", "gemini": "gemini-2.5-flash"}, "custom": True}, cfg["ai_choice"]
+    assert cfg["ai_choice"] == {"primary": "groq", "fallbacks": ["gemini"], "models": {"groq": "openai/gpt-oss-20b", "gemini": "gemini-flash-latest"}, "custom": True}, cfg["ai_choice"]
     assert [p["provider"] for p in cfg["providers"]] == ["groq", "gemini"] and cfg["model"] == "openai/gpt-oss-20b"
     llm.load_choice()  # the choice is saved in the database: it is the same after a restart
     assert llm.choice()["primary"] == "groq"

@@ -551,3 +551,8 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-ring);
 .plist .tagchips{padding:6px 12px 8px}
 .ptags{font-size:.74rem;font-weight:600;color:var(--accent)}
 :root[data-theme="dark"] .pitem.sel .ptags{color:rgba(255,255,255,.85)}
+
+/* long words (file names with underscores) wrap instead of pushing the page wider. The page content stays centred. */
+h1,h2,h3,h4,p,li,label,strong,.small,.lead,.pitem,.toast,.drop{overflow-wrap:anywhere}
+.main{margin-inline:auto;min-width:0}
+body{overflow-x:clip}

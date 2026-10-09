@@ -22,7 +22,7 @@ MAX_PAGES = int(os.getenv("MAX_PAGES", "80"))
 MIN_TEXT_CHARS = int(os.getenv("MIN_TEXT_CHARS", "800"))  # less text = scanned PDF
 
 PROVIDERS = {
-    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "key_env": "GEMINI_API_KEY", "model": "gemini-2.5-flash"},
+    "gemini": {"base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "key_env": "GEMINI_API_KEY", "model": "gemini-flash-latest"},
     "groq": {"base_url": "https://api.groq.com/openai/v1", "key_env": "GROQ_API_KEY", "model": "llama-3.3-70b-versatile"},
     "openrouter": {"base_url": "https://openrouter.ai/api/v1", "key_env": "OPENROUTER_API_KEY", "model": "meta-llama/llama-3.3-70b-instruct"},
     "ollama": {"base_url": "http://localhost:11434/v1", "key_env": "", "model": "llama3.1:8b"},
@@ -31,7 +31,7 @@ PROVIDERS = {
 
 # Models that you can pick in Settings. You can also type any other model name that the provider knows.
 MODEL_SUGGESTIONS = {
-    "gemini": ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
+    "gemini": ["gemini-flash-latest", "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.5-pro"],
     "groq": ["llama-3.3-70b-versatile", "openai/gpt-oss-120b", "openai/gpt-oss-20b"],
     "openrouter": ["meta-llama/llama-3.3-70b-instruct"],
     "ollama": ["llama3.1:8b"],
