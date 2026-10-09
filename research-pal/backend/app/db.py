@@ -53,6 +53,13 @@ def init() -> None:
             CREATE TABLE IF NOT EXISTS review_items(
               id TEXT PRIMARY KEY, kind TEXT, paper_id TEXT, question TEXT, answer TEXT, quote TEXT, page INTEGER DEFAULT 0, created_at REAL,
               card_id TEXT DEFAULT '', ref_id TEXT DEFAULT '', last_mark TEXT DEFAULT '', tries INTEGER DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS goals(
+              id TEXT PRIMARY KEY, date TEXT, text TEXT, kind TEXT, target INTEGER DEFAULT 0, done INTEGER DEFAULT 0, created_at REAL);
+            CREATE TABLE IF NOT EXISTS wins(
+              id TEXT PRIMARY KEY, date TEXT, text TEXT, created_at REAL);
+            CREATE TABLE IF NOT EXISTS focus_sessions(
+              id TEXT PRIMARY KEY, start REAL, end REAL, minutes INTEGER DEFAULT 0, task_text TEXT, paper_id TEXT DEFAULT '',
+              date TEXT, planned INTEGER DEFAULT 0, goal_id TEXT DEFAULT '');
             CREATE TABLE IF NOT EXISTS ai_log(
               id INTEGER PRIMARY KEY AUTOINCREMENT, time REAL, feature TEXT, paper_id TEXT, provider TEXT, model TEXT);
             """
@@ -72,6 +79,11 @@ def init() -> None:
             c.execute("ALTER TABLE papers ADD COLUMN focus TEXT DEFAULT ''")
         # A restart can stop a job in the middle. Mark such papers, so you can retry them.
         c.execute("UPDATE papers SET status='error', error='Processing stopped (server restart). Click Retry.' WHERE status IN ('processing','queued')")
+
+
+def now() -> float:
+    """The clock of the server. A test can replace it."""
+    return time.time()
 
 
 def new_id() -> str:
@@ -343,6 +355,126 @@ def coverage() -> dict:
         total = c.execute("SELECT COUNT(*) AS n FROM papers").fetchone()["n"]
         tagged = c.execute("SELECT COUNT(DISTINCT paper_id) AS n FROM paper_tags").fetchone()["n"]
     return {"sub_questions": [dict(r) for r in rows], "papers": total, "untagged": total - tagged}
+# ---------- goals, wins and focus sessions (the Today page) ----------
+def goals_list(date: str) -> list[dict]:
+    with conn() as c:
+        rows = c.execute("SELECT * FROM goals WHERE date=? ORDER BY created_at, rowid", (date,)).fetchall()
+    return [{**dict(r), "done": bool(r["done"])} for r in rows]
+
+
+def goal_add(date: str, text: str, kind: str, target: int, gid: str | None = None, done: bool = False, created_at: float | None = None) -> dict:
+    gid = gid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO goals(id,date,text,kind,target,done,created_at) VALUES(?,?,?,?,?,?,?)", (gid, date, text, kind, target, int(done), created_at or now()))
+    return goal_get(gid)
+
+
+def goal_get(gid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM goals WHERE id=?", (gid,)).fetchone()
+    return {**dict(r), "done": bool(r["done"])} if r else None
+
+
+def goal_update(gid: str, **fields) -> dict | None:
+    allowed = {k: (int(v) if k == "done" else v) for k, v in fields.items() if k in ("text", "target", "done") and v is not None}
+    if allowed:
+        with conn() as c:
+            c.execute(f"UPDATE goals SET {', '.join(f'{k}=?' for k in allowed)} WHERE id=?", (*allowed.values(), gid))
+    return goal_get(gid)
+
+
+def goal_delete(gid: str) -> bool:
+    with conn() as c:
+        return c.execute("DELETE FROM goals WHERE id=?", (gid,)).rowcount > 0
+
+
+def goals_all() -> list[dict]:
+    with conn() as c:
+        return [{**dict(r), "done": bool(r["done"])} for r in c.execute("SELECT * FROM goals ORDER BY date, created_at")]
+
+
+def win_add(date: str, text: str, wid: str | None = None, created_at: float | None = None) -> dict:
+    wid = wid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO wins(id,date,text,created_at) VALUES(?,?,?,?)", (wid, date, text, created_at or now()))
+        return dict(c.execute("SELECT * FROM wins WHERE id=?", (wid,)).fetchone())
+
+
+def wins_list(limit: int = 50, date: str | None = None, before: str | None = None) -> list[dict]:
+    """The newest first. date: only this day. before: only the days before this date."""
+    q, args = "SELECT * FROM wins WHERE 1=1", []
+    if date:
+        q += " AND date=?"
+        args.append(date)
+    if before:
+        q += " AND date<?"
+        args.append(before)
+    with conn() as c:
+        return [dict(r) for r in c.execute(q + " ORDER BY date DESC, created_at DESC LIMIT ?", (*args, limit))]
+
+
+def win_get(wid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM wins WHERE id=?", (wid,)).fetchone()
+    return dict(r) if r else None
+
+
+def win_random(before: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM wins WHERE date<? ORDER BY RANDOM() LIMIT 1", (before,)).fetchone()
+    return dict(r) if r else None
+
+
+def win_delete(wid: str) -> bool:
+    with conn() as c:
+        return c.execute("DELETE FROM wins WHERE id=?", (wid,)).rowcount > 0
+
+
+def focus_active():
+    with conn() as c:
+        r = c.execute("SELECT * FROM focus_sessions WHERE end IS NULL ORDER BY start DESC LIMIT 1").fetchone()
+    return dict(r) if r else None
+
+
+def focus_start(task_text: str, paper_id: str, planned: int, goal_id: str, date: str) -> dict:
+    sid = new_id()
+    with conn() as c:
+        c.execute("INSERT INTO focus_sessions(id,start,end,minutes,task_text,paper_id,date,planned,goal_id) VALUES(?,?,NULL,0,?,?,?,?,?)",
+                  (sid, now(), task_text, paper_id, date, planned, goal_id))
+        return dict(c.execute("SELECT * FROM focus_sessions WHERE id=?", (sid,)).fetchone())
+
+
+def focus_stop(max_minutes: int = 600):
+    """Close the running session. The server counts the minutes from its own clock."""
+    s = focus_active()
+    if not s:
+        return None
+    end = now()
+    minutes = max(0, min(int(round((end - s["start"]) / 60)), max_minutes))
+    with conn() as c:
+        c.execute("UPDATE focus_sessions SET end=?, minutes=? WHERE id=?", (end, minutes, s["id"]))
+        return dict(c.execute("SELECT * FROM focus_sessions WHERE id=?", (s["id"],)).fetchone())
+
+
+def focus_list(date: str | None = None) -> list[dict]:
+    with conn() as c:
+        if date:
+            rows = c.execute("SELECT * FROM focus_sessions WHERE date=? AND end IS NOT NULL ORDER BY start", (date,)).fetchall()
+        else:
+            rows = c.execute("SELECT * FROM focus_sessions WHERE end IS NOT NULL ORDER BY start").fetchall()
+    return [dict(r) for r in rows]
+
+
+def focus_minutes(date: str) -> int:
+    return sum(s["minutes"] for s in focus_list(date))
+
+
+def focus_restore(row: dict) -> None:
+    with conn() as c:
+        c.execute("INSERT OR IGNORE INTO focus_sessions(id,start,end,minutes,task_text,paper_id,date,planned,goal_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                  (row["id"], row["start"], row["end"], row["minutes"], row["task_text"], row["paper_id"], row["date"], row["planned"], row["goal_id"]))
+
+
 # ---------- attempts of the Feynman check ----------
 def explanation_add(paper_id: str, card_id: str, text: str, result: dict, score: int, eid: str | None = None, created_at: float | None = None) -> str:
     eid = eid or new_id()

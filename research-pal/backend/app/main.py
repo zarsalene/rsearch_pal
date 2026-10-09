@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, project, ste, understand, vectors, words
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, project, ste, today, understand, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -764,6 +764,117 @@ def simplify_text(body: SimplifyTextIn):
     return run_simplify(text)
 
 
+# ---------- Today: goals, wins, focus timer ----------
+def run_today(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except today.TodayError as e:
+        raise HTTPException(400, str(e))
+
+
+TODAY = [Depends(auth.require_auth), Depends(features.require("today"))]
+
+
+@app.get("/api/today", dependencies=TODAY)
+def get_today(date: str | None = None):
+    return run_today(lambda: today.today(today.clean_date(date)))
+
+
+@app.get("/api/today/next", dependencies=TODAY)
+def get_today_next(date: str | None = None):
+    return run_today(lambda: today.next_action(today.clean_date(date)))
+
+
+class GoalIn(BaseModel):
+    text: str
+    kind: str = "free"
+    target: int = 0
+    date: str | None = None
+
+
+class GoalPatch(BaseModel):
+    text: str | None = None
+    target: int | None = None
+    done: bool | None = None
+
+
+@app.get("/api/goals", dependencies=TODAY)
+def list_goals(date: str | None = None):
+    return run_today(lambda: db.goals_list(today.clean_date(date)))
+
+
+@app.post("/api/goals", dependencies=TODAY)
+def add_goal(body: GoalIn):
+    return run_today(lambda: today.add_goal(today.clean_date(body.date), body.text, body.kind, body.target))
+
+
+@app.put("/api/goals/{gid}", dependencies=TODAY)
+def update_goal(gid: str, body: GoalPatch):
+    if not db.goal_get(gid):
+        raise HTTPException(404, "Goal not found.")
+    text = run_today(today.clean_text, body.text, today.MAX_GOAL_TEXT, "goal") if body.text is not None else None
+    return db.goal_update(gid, text=text, target=body.target, done=body.done)
+
+
+@app.delete("/api/goals/{gid}", dependencies=TODAY)
+def delete_goal(gid: str):
+    if not db.goal_delete(gid):
+        raise HTTPException(404, "Goal not found.")
+    return {"ok": True}
+
+
+class WinIn(BaseModel):
+    text: str
+    date: str | None = None
+
+
+@app.get("/api/wins", dependencies=TODAY)
+def list_wins(limit: int = 5, before: str | None = None):
+    return db.wins_list(min(max(limit, 1), 200), before=run_today(today.clean_date, before) if before else None)
+
+
+@app.post("/api/wins", dependencies=TODAY)
+def add_win(body: WinIn):
+    date = run_today(today.clean_date, body.date)
+    return db.win_add(date, run_today(today.clean_text, body.text, today.MAX_WIN_TEXT, "win"))
+
+
+@app.delete("/api/wins/{wid}", dependencies=TODAY)
+def delete_win(wid: str):
+    if not db.win_delete(wid):
+        raise HTTPException(404, "Win not found.")
+    return {"ok": True}
+
+
+class FocusIn(BaseModel):
+    task_text: str = ""
+    paper_id: str = ""
+    goal_id: str = ""
+    planned_minutes: int = 25
+    date: str | None = None
+
+
+@app.post("/api/focus/start", dependencies=TODAY)
+def focus_start(body: FocusIn):
+    return run_today(lambda: today.start_focus(body.task_text, body.paper_id, body.planned_minutes, body.goal_id, today.clean_date(body.date)))
+
+
+@app.post("/api/focus/stop", dependencies=TODAY)
+def focus_stop():
+    return run_today(today.stop_focus)
+
+
+@app.get("/api/focus/active", dependencies=TODAY)
+def focus_active():
+    return {"session": db.focus_active()}
+
+
+@app.get("/api/focus", dependencies=TODAY)
+def focus_sessions(date: str | None = None):
+    d = run_today(today.clean_date, date)
+    return {"date": d, "minutes": db.focus_minutes(d), "sessions": db.focus_list(d)}
+
+
 # ---------- understand: Feynman check, like I am 12, quiz ----------
 def run_understand(pid: str, feature: str, fn, *args):
     must_get(pid)
@@ -993,7 +1104,8 @@ def export():
             "project": {"title": proj["title"], "question": proj["question"], "stage": proj["stage"], "sub_questions": db.list_sub_questions()},
             "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
             "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
-            "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")]}
+            "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")],
+            "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list()}
 
 
 def restore_project(data: dict) -> None:
@@ -1062,6 +1174,26 @@ def import_backup(data: dict, background: BackgroundTasks):
             if str(r["id"]).isalnum() and not db.review_get(str(r["id"])):
                 db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
         except (KeyError, TypeError, ValueError):
+            pass
+    for g in data.get("goals") or []:  # goals, wins and focus sessions are part of the backup. A row that exists is skipped.
+        try:
+            if str(g["id"]).isalnum() and not db.goal_get(str(g["id"])) and g.get("kind") in today.GOAL_KINDS:
+                db.goal_add(today.clean_date(g["date"]), str(g["text"])[:today.MAX_GOAL_TEXT], g["kind"], int(g.get("target") or 0), str(g["id"]), bool(g.get("done")), float(g.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError, today.TodayError):
+            pass
+    for w in data.get("wins") or []:
+        try:
+            if str(w["id"]).isalnum() and not db.win_get(str(w["id"])):
+                db.win_add(today.clean_date(w["date"]), str(w["text"])[:today.MAX_WIN_TEXT], str(w["id"]), float(w.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError, today.TodayError):
+            pass
+    for s in data.get("focus_sessions") or []:
+        try:
+            if str(s["id"]).isalnum() and s.get("end") is not None:
+                db.focus_restore({"id": str(s["id"]), "start": float(s["start"]), "end": float(s["end"]), "minutes": int(s.get("minutes") or 0),
+                                  "task_text": str(s.get("task_text", ""))[:today.MAX_TASK_TEXT], "paper_id": str(s.get("paper_id", "")), "date": today.clean_date(s["date"]),
+                                  "planned": int(s.get("planned") or 0), "goal_id": str(s.get("goal_id", ""))})
+        except (KeyError, TypeError, ValueError, today.TodayError):
             pass
     for r in data.get("ai_log") or []:
         try:
