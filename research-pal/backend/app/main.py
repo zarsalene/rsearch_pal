@@ -913,7 +913,7 @@ class ExplainIn(BaseModel):
 @app.post("/api/papers/{pid}/explain", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
 def explain_paper(pid: str, body: ExplainIn):
     """The Feynman check. The student explains the paper. The server checks each mark of the AI against the PDF."""
-    was_boss_down = bool(db.get_paper(pid).get("boss_defeated_at"))
+    was_boss_down = bool((db.get_paper(pid) or {}).get("boss_defeated_at"))
     result = run_understand(pid, "explain", understand.explain, body.text, body.card_id)
     result["xp_gained"] = game.XP["feynman_pass"] if game_event(game.check_feynman, pid, result["score"]) else 0
     game_event(quests.check_bosses)  # a better score can defeat a boss (the points can do it first)
@@ -976,7 +976,7 @@ def answer_quiz(rid: str, body: AnswerIn):
         raise HTTPException(404, "Question not found.")
     try:
         with llm.cache_scope(item["paper_id"]), llm.ai_context("quiz", item["paper_id"]):
-            was_boss_down = bool(db.get_paper(item["paper_id"]).get("boss_defeated_at"))
+            was_boss_down = bool((db.get_paper(item["paper_id"]) or {}).get("boss_defeated_at"))
             result = understand.mark_answer(rid, body.answer)
             if result["mark"] == "correct":
                 game_event(game.award, "quiz_correct", rid)
