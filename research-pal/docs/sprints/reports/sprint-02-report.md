@@ -36,6 +36,8 @@ npm run build        built
 npm run e2e          6 passed (1.6m)
 ```
 
+CI of the branch: passed. https://github.com/zarsalene/rsearch_pal/actions/runs/37949330013
+
 Truth tests (new): a mark with a false quote → `cannot_check`; a quiz question with a false quote → dropped; a number that is not in the PDF → `wrong` with source "server"; a quiz answer with a new number → not "correct"; a number change in the example → refused.
 
 ## 4. Smoke test (real AI)
