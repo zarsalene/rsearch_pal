@@ -60,6 +60,10 @@ def init() -> None:
             CREATE TABLE IF NOT EXISTS focus_sessions(
               id TEXT PRIMARY KEY, start REAL, end REAL, minutes INTEGER DEFAULT 0, task_text TEXT, paper_id TEXT DEFAULT '',
               date TEXT, planned INTEGER DEFAULT 0, goal_id TEXT DEFAULT '');
+            CREATE TABLE IF NOT EXISTS quests_active(
+              id TEXT PRIMARY KEY, code TEXT, week TEXT, chosen_at REAL, done_at REAL, UNIQUE(code, week));
+            CREATE TABLE IF NOT EXISTS activity(
+              id TEXT PRIMARY KEY, time REAL, date TEXT, kind TEXT, ref_id TEXT);
             CREATE TABLE IF NOT EXISTS xp_events(
               id TEXT PRIMARY KEY, time REAL, date TEXT, action TEXT, ref_id TEXT, xp INTEGER, UNIQUE(action, ref_id));
             CREATE TABLE IF NOT EXISTS badges(
@@ -87,6 +91,11 @@ def init() -> None:
         c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id,due) "
                   "SELECT id,'glossary',paper_id,term,explanation,CASE WHEN source='paper' THEN explanation ELSE '' END,page,created_at,id,created_at FROM glossary "
                   "WHERE id NOT IN (SELECT ref_id FROM review_items WHERE kind='glossary')")
+        # Bosses (Sprint 07): a paper can be marked as a boss. The date of the victory stays.
+        paper_cols = {r["name"] for r in c.execute("PRAGMA table_info(papers)")}
+        for name, typ in (("is_boss", "INTEGER DEFAULT 0"), ("boss_defeated_at", "REAL")):
+            if name not in paper_cols:
+                c.execute(f"ALTER TABLE papers ADD COLUMN {name} {typ}")
         # Older databases have no focus column. Add it one time.
         if "focus" not in {r["name"] for r in c.execute("PRAGMA table_info(papers)")}:
             c.execute("ALTER TABLE papers ADD COLUMN focus TEXT DEFAULT ''")
@@ -369,6 +378,79 @@ def coverage() -> dict:
         total = c.execute("SELECT COUNT(*) AS n FROM papers").fetchone()["n"]
         tagged = c.execute("SELECT COUNT(DISTINCT paper_id) AS n FROM paper_tags").fetchone()["n"]
     return {"sub_questions": [dict(r) for r in rows], "papers": total, "untagged": total - tagged}
+# ---------- quests, bosses, activity (Sprint 07) ----------
+def quests_week(week: str) -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM quests_active WHERE week=? ORDER BY rowid", (week,))]
+
+
+def quests_recent_offers(week: str, weeks: int = 3) -> list[dict]:
+    """The quests that were offered in the last weeks (not this week). The picker puts them last, so the offers change."""
+    with conn() as c:
+        rows = c.execute("SELECT DISTINCT week FROM quests_active WHERE week<? ORDER BY week DESC LIMIT ?", (week, weeks)).fetchall()
+        return [dict(r) for w in rows for r in c.execute("SELECT * FROM quests_active WHERE week=?", (w["week"],))]
+
+
+def quest_offer(code: str, week: str, qid: str | None = None, chosen_at: float | None = None, done_at: float | None = None) -> None:
+    with conn() as c:
+        c.execute("INSERT OR IGNORE INTO quests_active(id,code,week,chosen_at,done_at) VALUES(?,?,?,?,?)", (qid or new_id(), code, week, chosen_at, done_at))
+
+
+def quest_choose(qid: str, when: float) -> None:
+    with conn() as c:
+        c.execute("UPDATE quests_active SET chosen_at=? WHERE id=?", (when, qid))
+
+
+def quest_unchoose(qid: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE quests_active SET chosen_at=NULL WHERE id=? AND done_at IS NULL", (qid,))
+
+
+def quest_done(qid: str, when: float) -> None:
+    with conn() as c:
+        c.execute("UPDATE quests_active SET done_at=? WHERE id=? AND done_at IS NULL", (when, qid))
+
+
+def quests_done() -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM quests_active WHERE done_at IS NOT NULL ORDER BY done_at DESC")]
+
+
+def quests_all() -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM quests_active ORDER BY week, rowid")]
+
+
+def paper_set_boss(pid: str, flag: bool) -> None:
+    update_paper(pid, is_boss=int(flag))
+
+
+def paper_boss_defeated(pid: str, when: float) -> None:
+    with conn() as c:
+        c.execute("UPDATE papers SET boss_defeated_at=? WHERE id=?", (when, pid))
+
+
+def activity_add(kind: str, ref_id: str, aid: str | None = None, when: float | None = None, date: str | None = None) -> None:
+    """A small record of something that the student did and that is not points (for example: the view "like I am 12" of a paper)."""
+    import datetime as dt
+    when = when or now()
+    with conn() as c:
+        c.execute("INSERT OR IGNORE INTO activity(id,time,date,kind,ref_id) VALUES(?,?,?,?,?)", (aid or new_id(), when, date or dt.date.fromtimestamp(when).isoformat(), kind, ref_id))
+
+
+def activity_list(kind: str | None = None) -> list[dict]:
+    with conn() as c:
+        if kind:
+            return [dict(r) for r in c.execute("SELECT * FROM activity WHERE kind=? ORDER BY time", (kind,))]
+        return [dict(r) for r in c.execute("SELECT * FROM activity ORDER BY time")]
+
+
+def settings_like(pattern: str) -> list[tuple[str, str]]:
+    _ensure_settings_table()
+    with conn() as c:
+        return [(r["key"], r["value"]) for r in c.execute("SELECT key, value FROM settings WHERE key LIKE ?", (pattern,))]
+
+
 # ---------- the game: XP events, badges, own rewards. Only the server writes XP (see game.py). ----------
 def xp_add(action: str, ref_id: str, xp: int, when: float, date: str) -> bool:
     """False if this (action, ref_id) has XP already. The table has a UNIQUE key, so a second row is never possible."""

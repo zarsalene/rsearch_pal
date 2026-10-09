@@ -18,6 +18,7 @@ TOKENS_PER_WEEK = 2
 ACTION_LABEL = {
     "card_ready": "A card with checked quotes", "feynman_pass": "A Feynman check passed", "quiz_correct": "A quiz answer that is correct",
     "link_explained": "A link explained with quotes", "focus_session": "A focus session", "win_written": "A win written", "review": "A review of an item",
+    "quest": "A quest done", "boss": "A boss defeated",
 }
 
 # (name, XP needed, the conditions of the skill). A condition is (key, text, number needed).
@@ -206,6 +207,23 @@ def refresh() -> None:
     for r in db.rewards_list():
         if not r["earned_at"] and condition_met(r["condition"], lvl, xp, s["best"], have["cards"]):
             db.reward_earn(r["id"], db.now())
+    try:  # quests and bosses check their conditions after each point event
+        from . import quests
+        quests.check_bosses()
+        quests.check_all()
+    except Exception:
+        import logging
+        logging.getLogger("research_pal").exception("Quest check failed")
+
+
+def badge_info(code: str):
+    """(name, how) of a badge. A boss badge has the title of the paper in its name."""
+    if code in BADGES:
+        return BADGES[code]
+    if code.startswith("boss:"):
+        p = db.get_paper(code[5:])
+        return (f"Boss defeated: {p['title'] if p else 'a paper'}", "You answered the quiz and passed the Feynman check, both with 80% or more.")
+    return None
 
 
 def parse_condition(text: str):
@@ -257,7 +275,7 @@ def summary(today: str) -> dict:
     return {
         "date": today, "xp": xp, "level": info, "have": have,
         "streak": {**s, "weekend_off": weekend_off(), "message": streak_message(s, bool(days))},
-        "badges": [{**b, "name": BADGES[b["code"]][0], "how": BADGES[b["code"]][1]} for b in db.badges_list() if b["code"] in BADGES],
+        "badges": [{**b, "name": badge_info(b["code"])[0], "how": badge_info(b["code"])[1]} for b in db.badges_list() if badge_info(b["code"])],
         "badges_missing": [{"code": c, "name": n, "how": h} for c, (n, h) in BADGES.items() if c not in {b["code"] for b in db.badges_list()}],
         "records": records(today),
         "rewards": db.rewards_list(),
