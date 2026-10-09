@@ -2,6 +2,100 @@ import { useEffect, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
 
+// The student chooses the default AI, one fallback, and the model of each. API keys stay in the server environment.
+function AiChoice({ config, onConfig, notify }) {
+  const options = config?.ai_options || [];
+  const cur = config?.ai_choice;
+  const [primary, setPrimary] = useState("");
+  const [fallback, setFallback] = useState("");
+  const [models, setModels] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState("");
+
+  useEffect(() => {
+    if (!cur) return;
+    setPrimary(cur.primary);
+    setFallback(cur.fallbacks[0] || "");
+    setModels(cur.models || {});
+  }, [cur]);
+
+  if (!options.length || !cur) return null;
+  const opt = (n) => options.find((o) => o.provider === n);
+  const modelFor = (n) => models[n] ?? opt(n)?.default_model ?? "";
+  const label = (o) => o.provider.charAt(0).toUpperCase() + o.provider.slice(1) + (o.ready ? "" : " (key missing)");
+
+  const apply = async (fn, done) => {
+    setBusy(true);
+    setSaved("");
+    try {
+      onConfig(await fn());
+      setSaved(done);
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const save = () => {
+    const chosen = {};
+    for (const n of [primary, fallback].filter(Boolean)) if ((models[n] || "").trim()) chosen[n] = models[n].trim();
+    return apply(() => api.setAi({ primary, fallbacks: fallback ? [fallback] : [], models: chosen }), "Saved. It works now.");
+  };
+
+  // A plain function, not a component: a component inside a component would lose the focus of the input on each key.
+  const row = ({ title, value, onProvider, n, none }) => (
+    <div className="aichoice">
+      <div className="inwrap">
+        <label htmlFor={"ai-" + title}>{title}</label>
+        <select id={"ai-" + title} value={value} onChange={(e) => onProvider(e.target.value)}>
+          {none && <option value="">None</option>}
+          {options
+            .filter((o) => title === "Default AI" || o.provider !== primary)
+            .map((o) => (
+              <option key={o.provider} value={o.provider}>
+                {label(o)}
+              </option>
+            ))}
+        </select>
+      </div>
+      {n && (
+        <div className="inwrap">
+          <label htmlFor={"m-" + title}>Model</label>
+          <input id={"m-" + title} type="text" list={"models-" + n} value={modelFor(n)} onChange={(e) => setModels({ ...models, [n]: e.target.value })} spellCheck={false} />
+          <datalist id={"models-" + n}>
+            {(opt(n)?.models || []).map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="group">
+      <h2>AI models</h2>
+      <p className="muted">
+        Choose which AI reads your papers. If the default gives an error, the fallback answers. The next request tries the default again. Pick a model from the list, or type any model name that the provider knows.
+      </p>
+      {row({ title: "Default AI", value: primary, onProvider: (v) => { setPrimary(v); if (v === fallback) setFallback(""); }, n: primary })}
+      {row({ title: "Fallback AI", value: fallback, onProvider: setFallback, n: fallback, none: true })}
+      <p className="small muted">The API keys stay on the server, in the file .env. They never go through this page. A provider without a key is skipped.</p>
+      <div className="row">
+        <button className="btn small" disabled={busy || !primary} onClick={save}>
+          {busy ? "Saving…" : "Save"}
+        </button>
+        {cur.custom && (
+          <button className="btn small ghost" disabled={busy} onClick={() => apply(api.resetAi, "Back to the settings of the server.")}>
+            Use the settings of the server
+          </button>
+        )}
+        {saved && <span className="muted small">{saved}</span>}
+      </div>
+    </div>
+  );
+}
+
 export default function Settings({ config, onConfig, onImported, onLogout, notify }) {
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
@@ -69,6 +163,8 @@ export default function Settings({ config, onConfig, onImported, onLogout, notif
           </label>
         </div>
       </div>
+
+      <AiChoice config={config} onConfig={onConfig} notify={notify} />
 
       <div className="group">
         <h2>AI and privacy</h2>

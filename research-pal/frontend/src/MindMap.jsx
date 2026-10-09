@@ -2,13 +2,15 @@ import { useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
 
-const DOT = { verified: "ok", check: "warn", unverified: "bad", not_stated: "muted", not_found: "warn" };
+const DOT = { verified: "ok", check: "warn", unverified: "bad", not_stated: "muted", not_found: "warn", edited: "info", suggestion: "info" };
 const DOT_TEXT = {
   verified: "Checked in the paper",
   check: "Check the numbers",
   unverified: "Not verified",
   not_stated: "Not stated in the paper",
   not_found: "Not found in the excerpts",
+  edited: "Edited by you",
+  suggestion: "Not a claim of the paper",
 };
 
 function Part({ n, paperId, hasPdf, notify, kids, collapsed, onToggle }) {
@@ -25,7 +27,7 @@ function Part({ n, paperId, hasPdf, notify, kids, collapsed, onToggle }) {
           </button>
         )}
       </div>
-      {n.answer ? <p>{n.answer}</p> : <p className="muted small">The AI gave no proof for this part, so the card hides the text. Read the paper yourself.</p>}
+      {n.answer ? <p>{n.answer}</p> : <p className="muted small">The card hides this claim, because the AI gave no proof for it. Read the paper yourself.</p>}
       {n.unverified_numbers?.length > 0 && <p className="warn-line">Not found in the paper: {n.unverified_numbers.join(", ")}</p>}
       {proof.length > 0 && (
         <details className="mm-proof">
@@ -62,7 +64,7 @@ export default function MindMap({ title, map, busy, paperId, hasPdf, onMake, onD
         <h2>Mind map</h2>
         <div className="row">
           <button className="btn small tint" disabled={busy} onClick={onMake}>
-            <Icon name={nodes.length ? "refresh" : "sparkle"} size={15} /> {busy ? "Making the map…" : nodes.length ? "Make it again" : "Make the mind map"}
+            <Icon name={nodes.length ? "refresh" : "sparkle"} size={15} /> {busy ? "Building…" : nodes.length ? "Build it again" : "Build the mind map"}
           </button>
           {nodes.length > 0 && (
             <button className="link" disabled={busy} onClick={onDelete}>
@@ -71,13 +73,7 @@ export default function MindMap({ title, map, busy, paperId, hasPdf, onMake, onD
           )}
         </div>
       </div>
-      {busy && (
-        <div className="progress" role="status">
-          <span className="dot-anim" />
-          The AI splits the paper into parts and checks each quote. This takes 20 to 60 seconds.
-        </div>
-      )}
-      {!nodes.length && !busy && <p className="muted small">The AI splits this paper into its parts: problem, method, data, results and more. Each part is a small card with a quote that proves it.</p>}
+      {!nodes.length && !busy && <p className="muted small">The map is built from your cards: problem, method, result and limitation. If the paper has several cards, each card is one branch. It uses no AI, so it is instant and adds no new claim.</p>}
       {nodes.length > 0 && (
         <div className="mm-scroll">
           <div className="mm">
@@ -112,7 +108,7 @@ export default function MindMap({ title, map, busy, paperId, hasPdf, onMake, onD
           </div>
         </div>
       )}
-      {map?.model && nodes.length > 0 && <p className="muted small">Made by {map.model}. A dot shows if the server found the quote in the PDF.</p>}
+      {nodes.length > 0 && <p className="muted small">Built from the cards. It follows them each time you open the card. A dot shows if the server found the quote in the PDF.</p>}
     </section>
   );
 }

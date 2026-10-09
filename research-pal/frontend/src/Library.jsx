@@ -50,7 +50,7 @@ export default function Library({ papers, selectedId, config, onSelect, onChange
   };
 
   return (
-    <aside className="library" aria-label="Library">
+    <aside className="library" id="library" aria-label="Library">
       <div className="side-head">
         <h2>
           Library <span className="count">{papers.length}</span>

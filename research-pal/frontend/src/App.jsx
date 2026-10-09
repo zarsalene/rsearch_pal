@@ -25,6 +25,21 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [config, setConfig] = useState(null);
   const [notice, setNotice] = useState("");
+  // The library can open and close. The choice is saved in this browser.
+  const [libOpen, setLibOpen] = useState(() => {
+    try {
+      return localStorage.getItem("rp-library") !== "closed";
+    } catch {
+      return true;
+    }
+  });
+  const toggleLib = () =>
+    setLibOpen((v) => {
+      try {
+        localStorage.setItem("rp-library", v ? "closed" : "open");
+      } catch {}
+      return !v;
+    });
 
   const refresh = useCallback(async () => {
     try {
@@ -63,6 +78,8 @@ export default function App() {
   const openPaper = (id) => {
     setSelected(id);
     setTab("cards");
+    // On a phone the library takes the whole width. Close it, so the card is visible.
+    if (window.matchMedia("(max-width: 820px)").matches) setLibOpen(false);
   };
 
   if (!authed) {
@@ -79,6 +96,9 @@ export default function App() {
     <div className="app">
       <header className="bar">
         <div className="brand">
+          <button className={"iconbtn" + (libOpen ? " on" : "")} onClick={toggleLib} aria-expanded={libOpen} aria-controls="library" aria-label={libOpen ? "Close the library" : "Open the library"} title={libOpen ? "Close the library" : "Open the library"}>
+            <Icon name="sidebar" size={18} />
+          </button>
           <Logo size={26} />
           Research Pal
         </div>
@@ -104,7 +124,7 @@ export default function App() {
         </div>
       )}
 
-      <div className="layout">
+      <div className={"layout" + (libOpen ? "" : " collapsed")}>
         <Library
           papers={papers}
           selectedId={selected}

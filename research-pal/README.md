@@ -40,6 +40,13 @@ Write a topic (example: "the validation agent") when you add a paper, or on the 
 Open a paper, then click **New card** in the tabs above the card. Write a focus topic (example: "the dataset"). The server makes a second card from the text it already saved. There is no new upload.
 Each card has its own focus, quotes, edits and mind map. A paper can have 13 cards at most. Search, links and the chat still use the first card of each paper.
 
+## Mind map, missing fields, AI models
+
+- **Mind map:** it is built from the cards, with no AI call. One card: its claims. Several cards: one branch for each card. It follows the cards each time you open the card. Press "Build the mind map" to show it.
+- **Not found:** when the AI saw only a part of a long paper, a field can say "Not found in the excerpts". Click "Search the paper again". The server picks new excerpts for that field and keeps the new answer only if its quote is in the PDF.
+- **AI models:** in Settings → AI models, choose the default AI, the fallback, and the model of each. The API keys stay in `.env` and never go through the page.
+- **Library:** the button at the left of the top bar opens and closes the library. The browser remembers the choice.
+
 ## What is in the box
 
 ```
@@ -84,12 +91,12 @@ The first upload downloads the small embedding model (about 80 MB). This happens
 Create a private repository and push this folder.
 
 ### 3. Backend on Render
-1. Render → New → Blueprint → select your repository. (Or New → Web Service, root directory `backend`.)
-2. Set the variables: `APP_PASSWORD` (long), `GROQ_API_KEY`, `FRONTEND_ORIGIN` (you set the real value in step 5). `SECRET_KEY` is generated.
+1. Render → New → Web Service → select your repository. Root directory: `research-pal/backend` (if your repository has the app at the top, use `backend`). Runtime: Python. Build: `pip install -r requirements.txt`. Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Plan: Free. Health check path: `/api/health`.
+2. Set the variables: `APP_PASSWORD` (long), `SECRET_KEY` (at least 24 random characters), `GEMINI_API_KEY`, `GROQ_API_KEY`, `LLM_PROVIDER=gemini`, `LLM_FALLBACK=groq`, `FRONTEND_ORIGIN` (you set the real value in step 5), `PYTHON_VERSION=3.11.9`.
 3. Deploy. Test: open `https://YOUR-API.onrender.com/api/health`. You must see `{"ok":true}`.
 
 ### 4. Frontend on Vercel
-1. Vercel → Add New → Project → select the repository. Root directory: `frontend`.
+1. Vercel → Add New → Project → select the repository. Root directory: `research-pal/frontend` (or `frontend` if the app is at the top of your repository).
 2. Variable: `VITE_API_URL` = your Render address (no slash at the end).
 3. Deploy. You get an address like `https://research-pal.vercel.app`.
 

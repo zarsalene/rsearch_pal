@@ -1,9 +1,13 @@
+# Render settings for the backend.
+# This repository has the app in the folder "research-pal/", so the root directory is "research-pal/backend".
+# If Render does not find this file (it looks at the top of the repository), make the service by hand: New > Web Service,
+# root directory "research-pal/backend", and copy the values below. See README.md.
 services:
   - type: web
     name: research-pal-api
     runtime: python
     plan: free
-    rootDir: backend
+    rootDir: research-pal/backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
@@ -16,7 +20,12 @@ services:
         generateValue: true
       - key: FRONTEND_ORIGIN
         sync: false
+      # Gemini is the default AI. If it gives an error, Groq answers. You can change both in the app (Settings > AI models).
       - key: LLM_PROVIDER
+        value: gemini
+      - key: LLM_FALLBACK
         value: groq
+      - key: GEMINI_API_KEY
+        sync: false
       - key: GROQ_API_KEY
         sync: false
