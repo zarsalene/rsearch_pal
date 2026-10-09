@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, game, pdf, project, ste, today, understand, vectors, words
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, game, journey, pdf, project, review, ste, today, understand, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -1043,6 +1043,50 @@ def delete_glossary(gid: str):
     return {"ok": True}
 
 
+# ---------- Knowledge Garden: spaced review, and the Expedition map ----------
+REVIEW = [Depends(auth.require_auth), Depends(features.require("review"))]
+
+
+def student_today(date: str | None, tz: int | None = None) -> str:
+    if tz is not None:
+        game.set_timezone(tz)
+    return today.clean_date(date) if date else game.local_date(db.now())
+
+
+@app.get("/api/review/due", dependencies=REVIEW)
+def review_due(date: str | None = None, tz: int | None = None, paper_id: str | None = None, limit: int = 50):
+    d = run_today(student_today, date, tz)
+    items, total = review.due_items(d, paper_id, min(max(limit, 1), review.MAX_DUE))
+    return {"date": d, "total": total, "items": items}
+
+
+@app.get("/api/review/garden", dependencies=REVIEW)
+def review_garden(date: str | None = None, tz: int | None = None):
+    return review.garden(run_today(student_today, date, tz))
+
+
+class RatingIn(BaseModel):
+    rating: str
+    date: str | None = None
+
+
+@app.post("/api/review/{item_id}", dependencies=REVIEW)
+def review_rate(item_id: str, body: RatingIn):
+    """The student rates an item (again, hard, good, easy). FSRS sets the next date. The server gives the points: 2 for each review, 20 a day at most."""
+    try:
+        out = review.answer(item_id, body.rating, run_today(student_today, body.date), db.now())
+    except review.ReviewError as e:
+        raise HTTPException(400, str(e))
+    out["xp_gained"] = game.XP["review"] if game_event(game.check_review, item_id, out.pop("reps")) else 0
+    return out
+
+
+@app.get("/api/journey/map", dependencies=[Depends(auth.require_auth), Depends(features.require("review"))])
+def journey_map():
+    """The six regions of the PhD road, each with a percent, a state and a kind first step."""
+    return journey.build()
+
+
 # ---------- Game: points, levels, streak, badges, own rewards ----------
 GAME = [Depends(auth.require_auth), Depends(features.require("game"))]
 
@@ -1192,6 +1236,7 @@ def export():
             "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
             "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
             "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")],
+            "review_state": db.review_state_rows(),
             "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
             "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list()}
 
@@ -1261,6 +1306,13 @@ def import_backup(data: dict, background: BackgroundTasks):
         try:
             if str(r["id"]).isalnum() and not db.review_get(str(r["id"])):
                 db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for s in data.get("review_state") or []:  # the dates of the review. The items come from the cards, the quiz and the glossary.
+        try:
+            db.review_restore_state({"id": str(s["id"]), "kind": str(s["kind"]), "ref_id": str(s.get("ref_id") or ""), "due": float(s["due"]), "stability": s.get("stability"),
+                                     "difficulty": s.get("difficulty"), "reps": int(s.get("reps") or 0), "lapses": int(s.get("lapses") or 0),
+                                     "last_review": s.get("last_review"), "fsrs_json": s.get("fsrs_json")})
         except (KeyError, TypeError, ValueError):
             pass
     for e in data.get("xp_events") or []:  # points, badges and rewards are part of the backup. The UNIQUE key stops a second row.

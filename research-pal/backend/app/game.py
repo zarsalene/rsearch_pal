@@ -9,14 +9,15 @@ import datetime as dt
 from . import cards, db
 
 # action -> XP. "focus_session" gives 1 XP for each 5 minutes, for a session of 20 minutes or more.
-XP = {"card_ready": 10, "feynman_pass": 25, "quiz_correct": 5, "link_explained": 10, "win_written": 2}
+XP = {"card_ready": 10, "feynman_pass": 25, "quiz_correct": 5, "link_explained": 10, "win_written": 2, "review": 2}
+MAX_REVIEW_XP_PER_DAY = 20
 FOCUS_MIN_MINUTES, FOCUS_STEP_MINUTES = 20, 5
 FEYNMAN_PASS_SCORE = 70
 TOKENS_PER_WEEK = 2
 
 ACTION_LABEL = {
     "card_ready": "A card with checked quotes", "feynman_pass": "A Feynman check passed", "quiz_correct": "A quiz answer that is correct",
-    "link_explained": "A link explained with quotes", "focus_session": "A focus session", "win_written": "A win written",
+    "link_explained": "A link explained with quotes", "focus_session": "A focus session", "win_written": "A win written", "review": "A review of an item",
 }
 
 # (name, XP needed, the conditions of the skill). A condition is (key, text, number needed).
@@ -105,6 +106,14 @@ def check_focus(session: dict) -> bool:
     if session["minutes"] < FOCUS_MIN_MINUTES:
         return False
     return award("focus_session", session["id"], session["minutes"] // FOCUS_STEP_MINUTES)
+
+
+def check_review(item_id: str, reps: int) -> bool:
+    """2 points for each review, at most 20 points each day. The same answer number of the same item gives points one time."""
+    today = local_date(db.now())
+    if db.xp_by_day("review").get(today, 0) + XP["review"] > MAX_REVIEW_XP_PER_DAY:
+        return False
+    return award("review", f"{item_id}:{reps}")
 
 
 def check_win(date: str) -> bool:

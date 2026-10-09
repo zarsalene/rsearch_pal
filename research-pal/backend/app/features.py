@@ -14,6 +14,7 @@ REGISTRY: dict[str, dict] = {
     "quiz": {"label": "Quiz me", "description": "Questions about a paper. Each question has a quote from the PDF as its source.", "default": True},
     "today": {"label": "Today page", "description": "The home page: your goal, three tasks, one next best action, a focus timer and your wins.", "default": True},
     "game": {"label": "Game: points, levels and streak", "description": "Points for real work that the server checks. Levels, a kind streak, badges and your own rewards.", "default": True},
+    "review": {"label": "Knowledge Garden: spaced review", "description": "Review your cards, words and quiz questions on the right day. One plant for each paper.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 
