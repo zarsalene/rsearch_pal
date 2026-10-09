@@ -1,6 +1,7 @@
 """A fake AI. It replaces llm.chat_json in the tests, so no test calls a real AI.
 Without a rule, the fake AI gives the scripted answers of the test PDFs in pdfs.py.
 Some answers are false on purpose (an invented quote, a number that is not in the PDF). The truth tests use them."""
+import json
 
 
 def default_answers(messages, max_tokens=None):
@@ -14,6 +15,36 @@ def default_answers(messages, max_tokens=None):
         return {"finer": {k: rate(k) for k in ("feasible", "interesting", "novel", "ethical", "relevant")},
                 "scope": {"status": "too_wide" if vague else "ok", "why": "The question covers a whole field." if vague else "The scope is good."},
                 "versions": ["Can deep learning find lung cancer in X-ray images?", "Does AI cut the time of a diagnosis in a hospital?", "How do nurses use AI tools in a clinic?"]}
+    if "You check an explanation" in system or "to check an explanation of a paper" in system:  # the Feynman check
+        claims = json.loads(user.split("<student_claims>")[1].split("</student_claims>")[0])
+        out = []
+        for c in claims:
+            low = c["claim"].lower()
+            if "false quote" in low:  # a mark with a quote that is not in the PDF
+                out.append({"id": c["id"], "mark": "correct", "quote": "The system completely fails on encrypted network traffic in all cases.", "page": 3, "comment": "This is right."})
+            elif "hypothesis" in low:
+                out.append({"id": c["id"], "mark": "correct", "quote": "Our system uses a hypothesis agent and a validation agent.", "page": 2, "comment": "Good. You named the two agents."})
+            elif "precision" in low:
+                out.append({"id": c["id"], "mark": "correct", "quote": "AUTOMA reaches a precision of 91.4 percent and a recall of 84.2 percent.", "page": 3, "comment": "This matches the paper."})
+            else:
+                out.append({"id": c["id"], "mark": "not_in_paper", "quote": "", "page": 0, "comment": "The AI did not find this in the paper."})
+        return {"claims": out}
+    if "like the student is 12 years old" in system:  # like I am 12
+        original = user.split("<text>")[1].split("</text>")[0]
+        return {"simple": "Simple: " + original, "example": "It is like two guards at a door.", "analogy": "It is like a cook who tastes the soup.", "terms": ["hypothesis agent"]}
+    if "write questions that the student answers from memory" in system:  # the quiz
+        return {"questions": [
+            {"question": "What does the hypothesis agent read?", "answer": "It reads Sysmon logs.", "quote": "The hypothesis agent reads Sysmon", "page": 2},
+            {"question": "Which dataset do the authors use?", "answer": "The OpTC dataset.", "quote": "On the OpTC dataset, AUTOMA reaches a precision of 91.4 percent", "page": 3},
+            {"question": "How does the system fail?", "answer": "It fails on encrypted traffic.", "quote": "The system completely fails on encrypted network traffic in all cases.", "page": 3},  # false quote: dropped
+        ]}
+    if "You mark the answer of a student" in system:  # the mark of a quiz answer
+        student = json.loads(user)["student_answer"].lower()
+        return {"mark": "correct", "comment": "Good answer."} if "sysmon" in student or "optc" in student else {"mark": "wrong", "comment": "Look at the quote again."}
+    if "You help a student who is new to a research field" in system:  # the simple version of a text
+        return {"text": "Simple: " + json.loads(user)["text"]}
+    if "You explain a word or a short term" in system:  # the word helper
+        return {"explanation": "A short explanation of the term."}
     if "You make a mind map" in system:
         def node(i, parent, label, quote, page, text="Explained."):
             return {"id": i, "parent": parent, "label": label, "explanation": text, "evidence": [{"quote": quote, "page": page}]}

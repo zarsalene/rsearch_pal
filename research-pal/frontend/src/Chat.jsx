@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "./api.js";
 import { Icon, Logo } from "./icons.jsx";
+import SimpleText from "./SimpleText.jsx";
 
 const MAX_PAPERS = 10;
 const STATUS = {
@@ -24,7 +25,7 @@ function Bubble({ m, papers, picked, onAdd, notify, onOpenCard }) {
       <Logo size={26} />
       <div className="bubble">
         <span className={"badge b-" + badge}>{label}</span>
-        <p className={"answer" + (canAdd ? "" : " muted")}>{m.answer}</p>
+        <SimpleText text={m.answer} load={() => api.simplifyText(m.answer)} className={"answer" + (canAdd ? "" : " muted")} />
         {m.unverified_numbers?.length > 0 && (
           <p className="warn-line">Not found in the papers: {m.unverified_numbers.join(", ")}. Compare with the tables before you use this.</p>
         )}
@@ -136,7 +137,7 @@ export default function Chat({ papers, selectedId, onOpenCard, notify }) {
   };
 
   return (
-    <section className="chat">
+    <section className="chat" data-words>
       <h1>Chat</h1>
       <p className="lead">Ask about the papers that you select. Each answer shows quotes from the PDFs. Add a good answer to a card as a note.</p>
 

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, project, vectors
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, pdf, project, ste, understand, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -32,7 +32,7 @@ app.add_middleware(
 # ---------- processing ----------
 def process_paper(pid: str, fresh: bool = False) -> None:
     """fresh=True asks the AI again. Otherwise the same request gets its saved answer."""
-    with PROCESS_LOCK, llm.cache_scope(pid, fresh):
+    with PROCESS_LOCK, llm.cache_scope(pid, fresh), llm.ai_context("card", pid):
         try:
             db.update_paper(pid, status="processing", error="")
             p = db.get_paper(pid)
@@ -90,7 +90,7 @@ def card_list(p: dict) -> list[dict]:
 
 def process_extra(pid: str, cid: str, fresh: bool = False) -> None:
     """Make one more card of a paper. It uses the saved text of the paper, so there is no new upload."""
-    with PROCESS_LOCK, llm.cache_scope(pid, fresh):
+    with PROCESS_LOCK, llm.cache_scope(pid, fresh), llm.ai_context("card", pid):
         try:
             db.update_extra(cid, status="processing", error="")
             x = db.get_extra(pid, cid)
@@ -540,7 +540,7 @@ def run_fill(pid: str, card: dict, names: list[str] | None) -> list[str]:
     pages = db.get_pages(pid)
     if not pages:
         raise HTTPException(400, "The text of this paper is not on the server. Use Read again first.")
-    with PROCESS_LOCK, llm.cache_scope(pid):
+    with PROCESS_LOCK, llm.cache_scope(pid), llm.ai_context("card", pid):
         try:
             return cards.fill_missing(pid, pages, pdf.chunk_pages(pages), card, names)
         except pdf.PdfError as e:
@@ -696,6 +696,226 @@ def delete_paper(pid: str):
     return {"ok": True}
 
 
+# ---------- simple mode ----------
+SIMPLE_MESSAGES = {
+    "changed_fact": "The server kept the original text. The simple version changed a number or a name.",
+    "not_simple": "The server kept the original text. The AI could not make it simpler.",
+    "empty": "There is no text to simplify.",
+}
+
+
+def simple_answer(result: dict) -> dict:
+    return {**result, "label": "AI simplification", "message": SIMPLE_MESSAGES.get(result["reason"], "")}
+
+
+def run_simplify(text: str, paper_id: str = "") -> dict:
+    try:
+        with llm.cache_scope(paper_id), llm.ai_context("simplify", paper_id):
+            return simple_answer(ste.simplify(text))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+class SimplifyFieldIn(BaseModel):
+    field: str
+    card_id: str = ""  # "" is the first card of the paper
+
+
+SIMPLE_TEXTS = ("verdict_reason", "inferred_limitations")  # texts of the AI on the card, besides the fields
+
+
+@app.post("/api/papers/{pid}/simplify", dependencies=[Depends(auth.require_auth), Depends(features.require("simple"))])
+def simplify_field(pid: str, body: SimplifyFieldIn):
+    """The simple version of one text of the AI on a card. The server reads the text from the card, so the page cannot send another text."""
+    must_get(pid)
+    if body.card_id:
+        x = db.get_extra(pid, body.card_id)
+        card = x["card"] if x else None
+    else:
+        card = db.get_card(pid)
+    if not card:
+        raise HTTPException(404, "This card is not ready.")
+    if body.field in SIMPLE_TEXTS:
+        text = str(card.get(body.field) or "").strip()
+    elif body.field in cards.FIELD_LABELS:
+        f = (card.get("fields") or {}).get(body.field) or {}
+        if f.get("kind") == "user" or f.get("edited"):
+            raise HTTPException(400, "This is your own text. The AI does not rewrite it.")
+        text = "" if f.get("status") in ("not_stated", "not_found") else str(f.get("answer") or "").strip()
+    else:
+        raise HTTPException(400, f"Unknown field: {body.field}")
+    if not text:
+        raise HTTPException(400, "This field has no text to simplify.")
+    return run_simplify(text, pid)
+
+
+class SimplifyTextIn(BaseModel):
+    text: str
+
+
+@app.post("/api/simplify", dependencies=[Depends(auth.require_auth), Depends(features.require("simple"))])
+def simplify_text(body: SimplifyTextIn):
+    """The simple version of a text of the AI in the chat, the links or the mind map. The same safety check applies."""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "There is no text to simplify.")
+    if len(text) > 3000:
+        raise HTTPException(400, "The text is longer than 3000 characters.")
+    return run_simplify(text)
+
+
+# ---------- understand: Feynman check, like I am 12, quiz ----------
+def run_understand(pid: str, feature: str, fn, *args):
+    must_get(pid)
+    try:
+        with llm.cache_scope(pid), llm.ai_context(feature, pid):
+            return fn(pid, *args)
+    except understand.UnderstandError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+class ExplainIn(BaseModel):
+    text: str
+    card_id: str = ""
+
+
+@app.post("/api/papers/{pid}/explain", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
+def explain_paper(pid: str, body: ExplainIn):
+    """The Feynman check. The student explains the paper. The server checks each mark of the AI against the PDF."""
+    return run_understand(pid, "explain", understand.explain, body.text, body.card_id)
+
+
+@app.get("/api/papers/{pid}/explanations", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
+def list_explanations(pid: str, card_id: str | None = None):
+    must_get(pid)
+    return [{"id": e["id"], "card_id": e["card_id"], "text": e["text"], "score": e["score"], "created_at": e["created_at"], "result": e["result"]}
+            for e in db.explanation_list(pid, card_id)]
+
+
+@app.delete("/api/explanations/{eid}", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
+def delete_explanation(eid: str):
+    if not db.explanation_delete(eid):
+        raise HTTPException(404, "Attempt not found.")
+    return {"ok": True}
+
+
+class Eli12In(BaseModel):
+    field: str
+    card_id: str = ""
+
+
+@app.post("/api/papers/{pid}/eli12", dependencies=[Depends(auth.require_auth), Depends(features.require("eli12"))])
+def eli12_field(pid: str, body: Eli12In):
+    return run_understand(pid, "eli12", understand.eli12, body.field, body.card_id)
+
+
+class QuizIn(BaseModel):
+    card_id: str = ""
+
+
+@app.post("/api/papers/{pid}/quiz", dependencies=[Depends(auth.require_auth), Depends(features.require("quiz"))])
+def make_quiz(pid: str, body: QuizIn):
+    """New questions. Each question has a quote that the server found in the PDF. The answers stay on the server until the student answers."""
+    return run_understand(pid, "quiz", understand.make_quiz, body.card_id)
+
+
+@app.get("/api/papers/{pid}/quiz", dependencies=[Depends(auth.require_auth), Depends(features.require("quiz"))])
+def list_quiz(pid: str):
+    must_get(pid)
+    return [{"id": r["id"], "question": r["question"], "last_mark": r["last_mark"], "tries": r["tries"], "card_id": r["card_id"]} for r in db.review_list(pid, "quiz")]
+
+
+class AnswerIn(BaseModel):
+    answer: str
+
+
+@app.post("/api/quiz/{rid}/answer", dependencies=[Depends(auth.require_auth), Depends(features.require("quiz"))])
+def answer_quiz(rid: str, body: AnswerIn):
+    item = db.review_get(rid)
+    if not item or item["kind"] != "quiz":
+        raise HTTPException(404, "Question not found.")
+    try:
+        with llm.cache_scope(item["paper_id"]), llm.ai_context("quiz", item["paper_id"]):
+            return understand.mark_answer(rid, body.answer)
+    except understand.UnderstandError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.delete("/api/quiz/{rid}", dependencies=[Depends(auth.require_auth), Depends(features.require("quiz"))])
+def delete_quiz(rid: str):
+    item = db.review_get(rid)
+    if not item or item["kind"] != "quiz":
+        raise HTTPException(404, "Question not found.")
+    with db.conn() as c:
+        c.execute("DELETE FROM review_items WHERE id=?", (rid,))
+    return {"ok": True}
+
+
+# ---------- word helper and glossary ----------
+class DefineIn(BaseModel):
+    term: str
+
+
+def define_term(pid: str, term: str) -> dict:
+    must_get(pid)
+    try:
+        with llm.cache_scope(pid), llm.ai_context("define", pid):
+            return words.define(pid, term)
+    except words.WordError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.post("/api/papers/{pid}/define", dependencies=[Depends(auth.require_auth), Depends(features.require("glossary"))])
+def define(pid: str, body: DefineIn):
+    out = define_term(pid, body.term)
+    saved = db.glossary_find(out["term"], pid)
+    return {**out, "saved_id": saved["id"] if saved else ""}
+
+
+class GlossaryIn(BaseModel):
+    term: str
+    paper_id: str
+
+
+def glossary_view(g: dict) -> dict:
+    return {**g, "label": words.FROM_PAPER if g["source"] == "paper" else words.FROM_AI, "paper_title": g.get("paper_title") or ""}
+
+
+@app.get("/api/glossary", dependencies=[Depends(auth.require_auth), Depends(features.require("glossary"))])
+def list_glossary(q: str = ""):
+    return [glossary_view(g) for g in db.glossary_list(q)]
+
+
+@app.post("/api/glossary", dependencies=[Depends(auth.require_auth), Depends(features.require("glossary"))])
+def add_glossary(body: GlossaryIn):
+    """Save a word. The server makes the explanation again, so the page cannot write a text and call it "From the paper"."""
+    out = define_term(body.paper_id, body.term)
+    if not out["known"]:
+        raise HTTPException(400, "The AI does not know this term, so there is nothing to save.")
+    g = db.glossary_add(out["term"], out["explanation"], out["source"], body.paper_id, out["page"])
+    return glossary_view({**g, "paper_title": must_get(body.paper_id)["title"]})
+
+
+@app.delete("/api/glossary/{gid}", dependencies=[Depends(auth.require_auth), Depends(features.require("glossary"))])
+def delete_glossary(gid: str):
+    if not db.glossary_delete(gid):
+        raise HTTPException(404, "Word not found.")
+    return {"ok": True}
+
+
+# ---------- AI use log ----------
+@app.get("/api/ai-log", dependencies=[Depends(auth.require_auth)])
+def ai_log(limit: int = 100):
+    """Each answer of an AI provider, with the feature and the paper. Saved answers are not in the list, because the AI did not help again."""
+    return db.ai_log_list(min(max(limit, 1), 1000))
+
+
 # ---------- search, links, backup ----------
 @app.get("/api/search", dependencies=[Depends(auth.require_auth)])
 def search(q: str, limit: int = 8):
@@ -722,7 +942,8 @@ class ChatIn(BaseModel):
 @app.post("/api/chat", dependencies=[Depends(auth.require_auth), Depends(features.require("chat"))])
 def chat_ask(body: ChatIn):
     try:
-        return chat.ask(body.question, body.paper_ids, body.history)
+        with llm.ai_context("chat", ",".join(dict.fromkeys(body.paper_ids))):
+            return chat.ask(body.question, body.paper_ids, body.history)
     except chat.ChatError as e:
         raise HTTPException(400, str(e))
     except llm.LLMError as e:
@@ -744,7 +965,7 @@ def explain_link(body: ExplainIn):
         if must_get(pid)["status"] != "ready":
             raise HTTPException(409, "A paper is not ready yet.")
     try:
-        with llm.cache_scope("", body.refresh):
+        with llm.cache_scope("", body.refresh), llm.ai_context("link", f"{body.a},{body.b}"):
             return links.explain(body.a, body.b, body.refresh)
     except chat.ChatError as e:
         raise HTTPException(400, str(e))
@@ -767,8 +988,12 @@ def export():
         d["tags"] = tags.get(p["id"], {})
         papers.append(d)
     proj = db.get_project()
+    glossary = [{k: g[k] for k in ("id", "term", "explanation", "source", "paper_id", "page", "created_at")} for g in db.glossary_list()]
     return {"version": 1, "thesis_question": proj["question"], "papers": papers,
-            "project": {"title": proj["title"], "question": proj["question"], "stage": proj["stage"], "sub_questions": db.list_sub_questions()}}
+            "project": {"title": proj["title"], "question": proj["question"], "stage": proj["stage"], "sub_questions": db.list_sub_questions()},
+            "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
+            "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
+            "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")]}
 
 
 def restore_project(data: dict) -> None:
@@ -820,4 +1045,29 @@ def import_backup(data: dict, background: BackgroundTasks):
         restore_tags(pid, d.get("tags"))
         background.add_task(reindex_paper, pid)
         added += 1
+    for g in data.get("glossary") or []:  # the words and the AI use log are part of the backup. A row that exists is skipped.
+        try:
+            if str(g.get("source")) in ("paper", "ai") and str(g.get("id", "")).isalnum():
+                db.glossary_add(str(g["term"])[:80], str(g["explanation"])[:3000], str(g["source"]), str(g.get("paper_id", "")), int(g.get("page") or 0), str(g["id"]), float(g.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError, sqlite3.IntegrityError):
+            pass
+    for e in data.get("explanations") or []:  # the attempts and the quiz questions are part of the backup. A row that exists is skipped.
+        try:
+            if str(e["id"]).isalnum() and not db.explanation_get(str(e["id"])) and isinstance(e.get("result"), dict):
+                db.explanation_add(str(e["paper_id"]), str(e.get("card_id", "")), str(e["text"])[:3000], e["result"], int(e.get("score") or 0), str(e["id"]), float(e.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for r in data.get("quiz") or []:
+        try:
+            if str(r["id"]).isalnum() and not db.review_get(str(r["id"])):
+                db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for r in data.get("ai_log") or []:
+        try:
+            row = {"time": float(r["time"]), "feature": str(r["feature"])[:40], "paper_id": str(r.get("paper_id", ""))[:200], "provider": str(r["provider"])[:40], "model": str(r["model"])[:100]}
+            if not db.ai_log_has(row):
+                db.ai_log_add(row["feature"], row["paper_id"], row["provider"], row["model"], row["time"])
+        except (KeyError, TypeError, ValueError):
+            pass
     return {"added": added}

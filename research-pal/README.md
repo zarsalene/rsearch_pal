@@ -54,6 +54,47 @@ Each card has its own focus, quotes, edits and mind map. A paper can have 13 car
 - **PhD stage:** Settings → PhD stage (Year 1, Year 2-3, Final year).
 - **Backup:** the backup file now holds the title, the question, the stage, the sub-questions and the tags. A restore fills only empty fields. It never replaces what you wrote.
 - **Switch:** Settings → Features → Thesis direction. When it is off, the bar, the tab, the chips and the calls of the server go away. Your data stays. The question stays in Settings → Your research question.
+## Simple mode
+
+The switch **Expert / Simple** is in the top bar. The browser remembers your choice.
+
+- In Simple mode, each text that the AI wrote shows a simple version: the card fields, the verdict, the chat answers, the link explanations and the mind map.
+- The simple version has sentences of 12 words at most. It explains each hard term in a short sentence and keeps the term in brackets.
+- The server checks the simple version. If a **number** or a **name** is different, the server **keeps the original text** and tells you why.
+- A label **AI simplification** shows on each simple text. The AI can add a short explanation of a term. This explanation is not from the paper. The quotes and the page numbers do not change.
+- Click **Show the original** to read the first text again.
+- The AI never rewrites a text that you wrote or edited.
+
+## Word helper and glossary
+
+Select a word or a short term in a card or in the chat. A small box opens.
+
+- **From the paper:** the server found a sentence in the PDF that defines the word. You see this sentence and its page. The AI did not write it.
+- **AI explanation:** the paper has no definition. The AI explains the word. This text is not from the paper.
+- Click **Save to glossary** to keep the word. The **Glossary** tab lists your words. You can search and delete them. The backup file holds your glossary.
+- The server makes the text again when you save a word. The page cannot send its own text.
+
+## Understand: explain, like I am 12, quiz
+
+Open a card and click **Understand**. There are three parts. Each part has a switch in Settings → Features.
+
+- **Explain it to me.** Write the main idea of the paper in your own words. Do not copy from the PDF. The AI marks each sentence: **Correct** (green), **Partly correct** (orange), **Wrong** (red), **Not in the paper** or **Cannot check** (gray). Click a sentence to see the quote and the page.
+  - The server checks each quote in the PDF. A mark without a quote that the server finds becomes **Cannot check**.
+  - The server also checks the numbers. A number that is not in the paper makes the sentence **Wrong**, even if the AI said "correct".
+  - The app lists the main points of the card that you did not mention. It gives a score from 0 to 100 and a kind message. It saves each attempt, so you see your progress.
+  - The AI never writes the explanation for you.
+- **Like I am 12.** Choose one part of the card. You get a simple text, one example and one analogy. The example and the analogy have the label **AI suggestion**. They are not from the paper. The server keeps no simple text that changes a number or a name.
+- **Quiz me.** The AI asks 3 to 5 questions. Each question has a quote from the PDF as its source. The server drops a question without a verified quote. You answer from memory. Then the app shows the correct answer, the quote and the page. The questions are saved. A later sprint will use them for the spaced review. Words that you save in the glossary are saved in the same way.
+
+The backup file holds your attempts and your questions.
+
+## AI use log
+
+The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.
+
+- A saved answer writes no line, because the AI did not help again.
+- The log has no text of your papers. The backup file holds the log.
+- You cannot switch the log off.
 
 ## Mind map, missing fields, AI models
 
@@ -131,6 +172,7 @@ In Render, set `FRONTEND_ORIGIN` = your Vercel address (no slash at the end). Re
 
 - Search and links run on your server only. The embeddings never leave it.
 - To make a card, **selected passages of the paper (not the full PDF file) go to the AI provider** (Groq or OpenRouter). Read their data policy before you use unpublished or confidential papers.
+- Simple mode sends one text of a card (or a chat answer) to the AI provider. The word helper sends the word and up to 3 sentences of the paper, only when the paper has no definition.
 - Public hosting (Render, Vercel) also means your data is on their servers.
 - For truly private reading: run the backend on your own computer with Ollama
   (`LLM_PROVIDER=ollama`, `ollama pull llama3.1:8b`). No text leaves your computer.
@@ -157,6 +199,7 @@ npm run e2e                 # tests in a real browser
 ## Feature switches
 
 Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has two entries: **Chat** and **Thesis direction**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me** and **Word helper and glossary**.
 
 ## Later (your list)
 

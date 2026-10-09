@@ -3,6 +3,8 @@ import { api, cardApi } from "./api.js";
 import { Icon } from "./icons.jsx";
 import MindMap from "./MindMap.jsx";
 import TagChips from "./TagChips.jsx";
+import SimpleText from "./SimpleText.jsx";
+import Understand from "./Understand.jsx";
 
 const ORDER = [
   ["question", "My question"],
@@ -78,7 +80,7 @@ function jump(name) {
 }
 
 // The first thing the student sees: what to do with the paper, and how much of the card has proof.
-function Summary({ card }) {
+function Summary({ card, paperId, cardId }) {
   const items = CLAIMS.filter(([k]) => card.fields?.[k]).map(([k, label]) => ({ k, label, s: card.fields[k].status }));
   const ok = items.filter((i) => i.s === "verified").length;
   const look = items.filter((i) => ["check", "unverified", "not_found"].includes(i.s)).length;
@@ -89,7 +91,7 @@ function Summary({ card }) {
         <div className={"verdict-panel v-" + card.verdict}>
           <span className="eyebrow">Verdict</span>
           <strong className="vlabel">{VERDICT[card.verdict]}</strong>
-          {card.verdict_reason && <p>{card.verdict_reason}</p>}
+          {card.verdict_reason && <SimpleText text={card.verdict_reason} load={() => api.simplifyField(paperId, "verdict_reason", cardId)} cacheKey={`${paperId}|${cardId}|verdict|${card.verdict_reason}`} className="" />}
         </div>
       )}
       {items.length > 0 && (
@@ -118,7 +120,7 @@ function Summary({ card }) {
   );
 }
 
-function Field({ name, label, f, paperId, hasPdf, onSave, notify, bare, onFill, filling }) {
+function Field({ name, label, f, paperId, cardId = "", hasPdf, onSave, notify, bare, onFill, filling }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState("");
   const [showDraft, setShowDraft] = useState(false);
@@ -163,7 +165,12 @@ function Field({ name, label, f, paperId, hasPdf, onSave, notify, bare, onFill, 
             </button>
           </div>
         ) : f.answer ? (
-          <p className={"answer" + (f.status === "not_stated" || f.status === "not_found" ? " muted" : "")}>{f.answer}</p>
+          // The simple version is for the texts that the AI wrote. A text that you wrote or edited stays as it is.
+          ["verified", "check", "suggestion"].includes(f.status) && !f.edited ? (
+            <SimpleText text={f.answer} load={() => api.simplifyField(paperId, name, cardId)} cacheKey={`${paperId}|${cardId}|${name}|${f.answer}`} />
+          ) : (
+            <p className={"answer" + (f.status === "not_stated" || f.status === "not_found" ? " muted" : "")}>{f.answer}</p>
+          )
         ) : (
           <p className="answer muted">The AI gave no proof for this claim, so the card hides it. Read the paper yourself, or write the answer.</p>
         )}
@@ -329,7 +336,9 @@ function CardTabs({ list, active, onPick, onAdd, canAdd }) {
 }
 
 // subQuestions: the sub-questions of the thesis (empty when the feature is off). tags: {card id: [sub-question ids]} of this paper.
-export default function CardView({ id, subQuestions = [], tags = {}, onChanged, onDeleted, notify }) {
+export default function CardView({ id, subQuestions = [], tags = {}, onChanged, onDeleted, notify, parts = { feynman: true, eli12: true, quiz: true } }) {
+  const [view, setView] = useState("card"); // "card" or "understand"
+  const understandOn = parts.feynman || parts.eli12 || parts.quiz;
   const [data, setData] = useState(null);
   const [tagBusy, setTagBusy] = useState(false);
   const [purpose, setPurpose] = useState("");
@@ -458,7 +467,7 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
   };
 
   return (
-    <article className="card">
+    <article className="card" data-words>
       <CardTabs list={list} active={cid} onPick={(c) => { setFillMsg(""); setCid(c); }} onAdd={addCard} canAdd={paper.status !== "error" || !!cid} />
       <header className="card-head">
         <h1>{card?.title || paper.title}</h1>
@@ -500,7 +509,19 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
         </div>
       )}
 
-      {card && <Summary card={card} />}
+      {card && <Summary card={card} paperId={id} cardId={cid} />}
+
+      {card && understandOn && (
+        <div className="viewseg" role="tablist" aria-label="View of the card">
+          <button role="tab" aria-selected={view === "card"} onClick={() => setView("card")}>
+            <Icon name="doc" size={14} /> Card
+          </button>
+          <button role="tab" aria-selected={view === "understand"} onClick={() => setView("understand")}>
+            <Icon name="sparkle" size={14} /> Understand
+          </button>
+        </div>
+      )}
+      {card && understandOn && view === "understand" && <Understand paperId={id} cardId={cid} card={card} parts={parts} notify={notify} />}
 
       {card && (() => {
         const missing = CLAIMS.filter(([k]) => card.fields?.[k]?.status === "not_found");
@@ -524,7 +545,7 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
 
       <FocusBar current={paper.focus || ""} keywords={card?.keywords} busy={inProgress} onApply={(focus) => again({ focus })} />
 
-      {card && (
+      {card && (view === "card" || !understandOn) && (
         <>
           {card.focus && card.fields?.focus && (
             <section className="focus-card" aria-label="Focus">
@@ -532,7 +553,7 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
                 <Icon name="target" size={14} /> Focus
               </div>
               <h2 className="focus-topic">{card.focus}</h2>
-              <Field name="focus" label="Focus" f={card.fields.focus} paperId={id} hasPdf={paper.has_pdf} onSave={save} notify={notify} bare onFill={fill} filling={fillBusy} />
+              <Field name="focus" label="Focus" f={card.fields.focus} paperId={id} cardId={cid} hasPdf={paper.has_pdf} onSave={save} notify={notify} bare onFill={fill} filling={fillBusy} />
             </section>
           )}
           <div className="fields">
@@ -541,7 +562,7 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
               if (!f) return null;
               return (
                 <div key={k}>
-                  <Field name={k} label={label} f={f} paperId={id} hasPdf={paper.has_pdf} onSave={save} notify={notify} onFill={fill} filling={fillBusy} />
+                  <Field name={k} label={label} f={f} paperId={id} cardId={cid} hasPdf={paper.has_pdf} onSave={save} notify={notify} onFill={fill} filling={fillBusy} />
                   {k === "limitation" && card.inferred_limitations && (
                     <p className="opinion">
                       <strong>AI opinion, not from the paper:</strong> {card.inferred_limitations}

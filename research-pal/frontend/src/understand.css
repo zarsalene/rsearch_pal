@@ -1,0 +1,35 @@
+/* ---- Understand: Feynman check, like I am 12, quiz (Sprint 02) ---- */
+.viewseg{display:inline-flex;gap:2px;padding:3px;background:var(--fill);border-radius:var(--tab-r);margin:6px 0 14px}
+.viewseg button,.subtabs button{display:inline-flex;align-items:center;gap:6px;border:0;background:none;border-radius:var(--tab-r-in);padding:6px 16px;font-size:.88rem;font-weight:600;color:var(--muted);cursor:pointer;transition:background .25s var(--ease),color .2s,box-shadow .25s}
+.viewseg button:hover,.subtabs button:hover{color:var(--ink)}
+.viewseg button[aria-selected=true],.subtabs button[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(24,24,27,.10),0 0 0 1px rgba(24,24,27,.05)}
+.subtabs{display:inline-flex;gap:2px;padding:3px;background:var(--fill);border-radius:var(--tab-r);margin-bottom:14px;flex-wrap:wrap}
+.understand h3{font-size:1rem;margin:18px 0 6px}
+.understand textarea{width:100%;margin-bottom:10px}
+.understand select{margin:0 8px}
+.understand .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.scorebar{display:flex;align-items:center;gap:18px;margin:18px 0 6px}
+.score{font-size:2.4rem;line-height:1;font-variant-numeric:tabular-nums}
+.score span{font-size:1rem;font-weight:500;color:var(--muted)}
+.kindmsg{margin:0;font-size:1.02rem}
+.claimtext{font-family:var(--serif);font-size:1.1rem;line-height:2;margin:4px 0 8px}
+.claim{display:inline;font:inherit;text-align:left;border:0;border-radius:6px;padding:2px 4px;margin:0 1px;cursor:pointer;color:var(--ink);background:var(--fill);box-decoration-break:clone;-webkit-box-decoration-break:clone}
+.claim.on{outline:2px solid var(--accent)}
+.claim.mark-correct{background:var(--ok-soft);box-shadow:inset 0 -2px 0 var(--ok)}
+.claim.mark-partly{background:var(--warn-soft);box-shadow:inset 0 -2px 0 var(--warn)}
+.claim.mark-wrong{background:var(--bad-soft);box-shadow:inset 0 -2px 0 var(--bad)}
+.claim.mark-not_in_paper{background:var(--accent-soft)}
+.claim.mark-cannot_check{background:var(--fill-2);border:1px dashed var(--line-strong)}
+.claim.legend{font-family:var(--sans);font-size:.78rem;font-weight:600;cursor:default;padding:2px 10px;border-radius:999px;margin:0 6px 4px 0}
+.claimdetail{background:var(--surface);border:var(--edge);border-radius:var(--r-md);padding:12px 16px;margin:10px 0}
+.small-answer{font-size:1rem}
+.missing ul,.history ul{padding-left:1.1em;margin:6px 0}
+.missing li{margin-bottom:6px}
+.history li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;list-style:none;margin-left:-1.1em;padding:4px 0}
+.htext{color:var(--muted);font-size:.88rem;flex:1;min-width:120px}
+.eli-result .answer{margin-bottom:6px}
+.termline{color:var(--muted);font-style:italic}
+.quizcard{background:var(--surface);border:var(--edge);border-radius:var(--r-lg);padding:18px 22px;margin-top:14px}
+.quizq{font-family:var(--serif);font-size:1.25rem;line-height:1.4;margin:4px 0 12px}
+.quizres p{margin:8px 0}
+.quizdone{background:var(--ok-soft);border-radius:var(--r-lg);padding:14px 20px;margin-top:14px}

@@ -40,6 +40,26 @@ def cache_scope(tag: str = "", fresh: bool = False):
         _used.scope = old
 
 
+@contextmanager
+def ai_context(feature: str, paper_id: str = ""):
+    """Say which feature and which paper an AI call is for. The AI use log keeps it. paper_id can be a list of ids with commas."""
+    old = getattr(_used, "ctx", ("other", ""))
+    _used.ctx = (feature, paper_id)
+    try:
+        yield
+    finally:
+        _used.ctx = old
+
+
+def _log_call(p: dict) -> None:
+    """The AI use log. One row for each answer of a provider. A saved answer (cache hit) writes no row."""
+    feature, paper_id = getattr(_used, "ctx", ("other", ""))
+    try:
+        db.ai_log_add(feature, paper_id, p["name"], p["model"])
+    except Exception:  # the log must never stop the app
+        log.exception("Could not write the AI use log")
+
+
 def _cache_key(p: dict, messages: list[dict], max_tokens: int | None) -> str:
     raw = json.dumps({"p": p["name"], "m": p["model"], "msgs": messages, "mt": max_tokens or config.LLM_MAX_TOKENS}, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -275,6 +295,7 @@ def chat_json(messages: list[dict], max_tokens: int | None = None) -> dict:
             _down_until.pop(p["name"], None)  # it works again
         _used.label = f"{p['name']}:{p['model']}"
         _cache_put(key, tag, p, out)
+        _log_call(p)
         return out
 
     if len(failures) == 1:

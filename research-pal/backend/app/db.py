@@ -46,6 +46,15 @@ def init() -> None:
             CREATE TABLE IF NOT EXISTS paper_tags(
               paper_id TEXT NOT NULL, card_id TEXT NOT NULL DEFAULT '', sub_question_id TEXT NOT NULL,
               PRIMARY KEY(paper_id, card_id, sub_question_id));
+            CREATE TABLE IF NOT EXISTS glossary(
+              id TEXT PRIMARY KEY, term TEXT, explanation TEXT, source TEXT, paper_id TEXT, page INTEGER DEFAULT 0, created_at REAL);
+            CREATE TABLE IF NOT EXISTS explanations(
+              id TEXT PRIMARY KEY, paper_id TEXT, card_id TEXT, text TEXT, result_json TEXT, score INTEGER, created_at REAL);
+            CREATE TABLE IF NOT EXISTS review_items(
+              id TEXT PRIMARY KEY, kind TEXT, paper_id TEXT, question TEXT, answer TEXT, quote TEXT, page INTEGER DEFAULT 0, created_at REAL,
+              card_id TEXT DEFAULT '', ref_id TEXT DEFAULT '', last_mark TEXT DEFAULT '', tries INTEGER DEFAULT 0);
+            CREATE TABLE IF NOT EXISTS ai_log(
+              id INTEGER PRIMARY KEY AUTOINCREMENT, time REAL, feature TEXT, paper_id TEXT, provider TEXT, model TEXT);
             """
         )
         # The thesis has one row. An older database keeps its research question: it moves from the settings into the project one time.
@@ -54,6 +63,10 @@ def init() -> None:
             old = c.execute("SELECT value FROM settings WHERE key='thesis_question'").fetchone() if has_settings else None
             c.execute("INSERT INTO project(id,title,question,stage,updated_at) VALUES(1,'',?,'',?)", ((old["value"] if old else "") or "", time.time()))
         c.execute("UPDATE extra_cards SET status='error', error='Processing stopped (server restart). Click Retry.' WHERE status IN ('processing','queued')")
+        # A word in the glossary is also a review item (kind "glossary"). Words saved before Sprint 02 get their item now.
+        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id) "
+                  "SELECT id,'glossary',paper_id,term,explanation,CASE WHEN source='paper' THEN explanation ELSE '' END,page,created_at,id FROM glossary "
+                  "WHERE id NOT IN (SELECT ref_id FROM review_items WHERE kind='glossary')")
         # Older databases have no focus column. Add it one time.
         if "focus" not in {r["name"] for r in c.execute("PRAGMA table_info(papers)")}:
             c.execute("ALTER TABLE papers ADD COLUMN focus TEXT DEFAULT ''")
@@ -134,6 +147,8 @@ def delete_paper(pid: str) -> None:
         c.execute("DELETE FROM settings WHERE key LIKE ?", (f"link:%{pid}%",))  # saved link explanations of this paper
         c.execute("DELETE FROM llm_cache WHERE tag=?", (pid,))  # saved AI answers of this paper
         c.execute("DELETE FROM extra_cards WHERE paper_id=?", (pid,))
+        c.execute("DELETE FROM explanations WHERE paper_id=?", (pid,))
+        c.execute("DELETE FROM review_items WHERE paper_id=? AND kind='quiz'", (pid,))  # the words of the glossary stay
 
 
 # ---------- more cards for one paper ----------
@@ -181,7 +196,6 @@ def delete_extra(pid: str, cid: str) -> None:
     with conn() as c:
         c.execute("DELETE FROM extra_cards WHERE id=? AND paper_id=?", (cid, pid))
         c.execute("DELETE FROM paper_tags WHERE paper_id=? AND card_id=?", (pid, cid))
-
 
 # ---------- saved AI answers ----------
 CACHE_MAX = 1000  # the oldest answers go first
@@ -329,6 +343,133 @@ def coverage() -> dict:
         total = c.execute("SELECT COUNT(*) AS n FROM papers").fetchone()["n"]
         tagged = c.execute("SELECT COUNT(DISTINCT paper_id) AS n FROM paper_tags").fetchone()["n"]
     return {"sub_questions": [dict(r) for r in rows], "papers": total, "untagged": total - tagged}
+# ---------- attempts of the Feynman check ----------
+def explanation_add(paper_id: str, card_id: str, text: str, result: dict, score: int, eid: str | None = None, created_at: float | None = None) -> str:
+    eid = eid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO explanations(id,paper_id,card_id,text,result_json,score,created_at) VALUES(?,?,?,?,?,?,?)",
+                  (eid, paper_id, card_id or "", text, json.dumps(result, ensure_ascii=False), int(score), created_at or time.time()))
+    return eid
+
+
+def _explanation_row(r) -> dict:
+    d = dict(r)
+    d["result"] = json.loads(d.pop("result_json") or "{}")
+    return d
+
+
+def explanation_list(paper_id: str, card_id: str | None = None) -> list[dict]:
+    """Newest first. card_id None = all cards of the paper."""
+    with conn() as c:
+        if card_id is None:
+            rows = c.execute("SELECT * FROM explanations WHERE paper_id=? ORDER BY created_at DESC", (paper_id,)).fetchall()
+        else:
+            rows = c.execute("SELECT * FROM explanations WHERE paper_id=? AND card_id=? ORDER BY created_at DESC", (paper_id, card_id)).fetchall()
+    return [_explanation_row(r) for r in rows]
+
+
+def explanation_list_all() -> list[dict]:
+    with conn() as c:
+        return [_explanation_row(r) for r in c.execute("SELECT * FROM explanations ORDER BY created_at")]
+
+
+def explanation_get(eid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM explanations WHERE id=?", (eid,)).fetchone()
+    return _explanation_row(r) if r else None
+
+
+def explanation_delete(eid: str) -> bool:
+    with conn() as c:
+        return c.execute("DELETE FROM explanations WHERE id=?", (eid,)).rowcount > 0
+
+
+# ---------- review items: quiz questions and glossary words (the spaced review of a later sprint uses them) ----------
+def review_add(kind: str, paper_id: str, question: str, answer: str, quote: str, page: int, card_id: str = "", ref_id: str = "",
+               rid: str | None = None, created_at: float | None = None) -> str:
+    rid = rid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,card_id,ref_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                  (rid, kind, paper_id, question, answer, quote, int(page or 0), created_at or time.time(), card_id or "", ref_id))
+    return rid
+
+
+def review_get(rid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM review_items WHERE id=?", (rid,)).fetchone()
+    return dict(r) if r else None
+
+
+def review_list(paper_id: str | None = None, kind: str | None = None) -> list[dict]:
+    q, args = "SELECT * FROM review_items WHERE 1=1", []
+    if paper_id is not None:
+        q += " AND paper_id=?"
+        args.append(paper_id)
+    if kind:
+        q += " AND kind=?"
+        args.append(kind)
+    with conn() as c:
+        return [dict(r) for r in c.execute(q + " ORDER BY created_at, rowid", args)]
+
+
+def review_mark(rid: str, mark: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE review_items SET last_mark=?, tries=tries+1 WHERE id=?", (mark, rid))
+
+
+# ---------- glossary: the words that the student looked up ----------
+def glossary_add(term: str, explanation: str, source: str, paper_id: str, page: int = 0, gid: str | None = None, created_at: float | None = None) -> dict:
+    """One row for each term and paper. The same term again gives the saved row. source: "paper" or "ai"."""
+    with conn() as c:
+        r = c.execute("SELECT * FROM glossary WHERE lower(term)=lower(?) AND paper_id=?", (term, paper_id)).fetchone()
+        if r:
+            return dict(r)
+        gid = gid or new_id()
+        c.execute("INSERT INTO glossary(id,term,explanation,source,paper_id,page,created_at) VALUES(?,?,?,?,?,?,?)",
+                  (gid, term, explanation, source, paper_id, int(page or 0), created_at or time.time()))
+        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                  (new_id(), "glossary", paper_id, term, explanation, explanation if source == "paper" else "", int(page or 0), created_at or time.time(), gid))
+        return dict(c.execute("SELECT * FROM glossary WHERE id=?", (gid,)).fetchone())
+
+
+def glossary_find(term: str, paper_id: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM glossary WHERE lower(term)=lower(?) AND paper_id=?", (term, paper_id)).fetchone()
+    return dict(r) if r else None
+
+
+def glossary_list(q: str = "") -> list[dict]:
+    like = f"%{q.strip().lower()}%"
+    with conn() as c:
+        rows = c.execute(
+            "SELECT g.*, p.title AS paper_title FROM glossary g LEFT JOIN papers p ON p.id=g.paper_id "
+            "WHERE ?='%%' OR lower(g.term) LIKE ? OR lower(g.explanation) LIKE ? ORDER BY lower(g.term)", (like, like, like)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def glossary_delete(gid: str) -> bool:
+    with conn() as c:
+        c.execute("DELETE FROM review_items WHERE kind='glossary' AND ref_id=?", (gid,))
+        return c.execute("DELETE FROM glossary WHERE id=?", (gid,)).rowcount > 0
+
+
+# ---------- AI use log: one row for each AI answer that did not come from the saved answers ----------
+def ai_log_add(feature: str, paper_id: str, provider: str, model: str, when: float | None = None) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO ai_log(time,feature,paper_id,provider,model) VALUES(?,?,?,?,?)", (when or time.time(), feature, paper_id, provider, model))
+
+
+def ai_log_list(limit: int = 100) -> dict:
+    with conn() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM ai_log ORDER BY id DESC LIMIT ?", (limit,))]
+        by = {r["feature"]: r["n"] for r in c.execute("SELECT feature, COUNT(*) AS n FROM ai_log GROUP BY feature ORDER BY n DESC")}
+    return {"total": sum(by.values()), "by_feature": by, "rows": rows}
+
+
+def ai_log_has(row: dict) -> bool:
+    with conn() as c:
+        return c.execute("SELECT 1 FROM ai_log WHERE time=? AND feature=? AND paper_id=? AND provider=? AND model=?",
+                         (row["time"], row["feature"], row["paper_id"], row["provider"], row["model"])).fetchone() is not None
 
 
 # ---------- feature switches ----------

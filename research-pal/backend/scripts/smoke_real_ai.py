@@ -4,7 +4,7 @@ no quote that the server shows as verified may be missing from the PDF.
 Usage:   python scripts/smoke_real_ai.py paper1.pdf paper2.pdf paper3.pdf [--fast-embeddings]
 Result:  exit code 0 = the check passed. 1 = a wrong quote shows as verified, or a paper failed. 2 = not run (no key, or no PDF).
 The data goes to a temporary folder. Your own library is not touched. The text of the PDFs goes to your AI provider."""
-import argparse, os, sys, tempfile, time
+import argparse, os, re, sys, tempfile, time
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # a Windows console cannot print every character of a paper
@@ -47,6 +47,72 @@ def show(card: dict) -> int:
     return shown
 
 
+def numbers(text: str) -> list[str]:
+    return sorted(re.findall(r"\d+(?:[.,]\d+)?", text or ""))
+
+
+def check_simple_and_words(client, h, pid, card, name) -> list[str]:
+    """Simple mode and the word helper on a real paper. Print the texts. Return the problems."""
+    problems = []
+    for field in ("method", "result"):
+        f = card["fields"].get(field) or {}
+        if f.get("status") not in ("verified", "check"):
+            continue
+        r = client.post(f"/api/papers/{pid}/simplify", headers=h, json={"field": field})
+        if r.status_code != 200:
+            print(f"  simple {field}: error {r.status_code} {r.text[:120]}")
+            continue
+        s = r.json()
+        print(f"  simple {field}: {'OK' if s['ok'] else 'kept the original (' + s['reason'] + ')'}\n      before: {f['answer'][:160]}\n      after:  {s['text'][:240]}")
+        if numbers(s["text"]) != numbers(f["answer"]):  # the server must never allow this
+            problems.append(f"{name}: THE SIMPLE TEXT OF {field} CHANGED A NUMBER")
+    for term in (card.get("keywords") or [])[:2]:
+        r = client.post(f"/api/papers/{pid}/define", headers=h, json={"term": term})
+        if r.status_code == 200:
+            d = r.json()
+            print(f"  word '{term}': [{d['label']}{' p.' + str(d['page']) if d['page'] else ''}] {d['explanation'][:200]}")
+        else:
+            print(f"  word '{term}': error {r.status_code} {r.text[:120]}")
+    return problems
+
+
+def check_understand(client, h, pid, card, name) -> list[str]:
+    """Feynman check, like I am 12 and the quiz on a real paper. The explanation is made from the card, with one false number."""
+    problems = []
+    f = card["fields"]
+    ok_text = " ".join(f[k]["answer"] for k in ("problem", "method") if f.get(k, {}).get("status") in ("verified", "check"))
+    false_claim = "The model reaches 99.99 percent accuracy."
+    r = client.post(f"/api/papers/{pid}/explain", headers=h, json={"text": (ok_text + " " + false_claim)[:2900]})
+    if r.status_code != 200:
+        print(f"  explain: error {r.status_code} {r.text[:150]}")
+        return problems
+    res = r.json()
+    print(f"  explain: score {res['score']}/100. {res['message']}")
+    for c in res["claims"]:
+        print(f"      [{c['mark']:<12}] {c['text'][:90]}" + (f"  (p.{c['page']})" if c["page"] else ""))
+    last = res["claims"][-1]
+    if last["mark"] != "wrong":
+        problems.append(f"{name}: THE FALSE NUMBER 99.99 WAS NOT MARKED WRONG ({last['mark']})")
+    for c in res["claims"]:
+        if c["verified"]:
+            try:
+                assert_no_false_quote({"quote": c["quote"], "verified": True}, pages=db.get_pages(pid))
+            except AssertionError as e:
+                problems.append(f"{name}: WRONG QUOTE IN THE FEYNMAN CHECK. {str(e)[:150]}")
+    e = client.post(f"/api/papers/{pid}/eli12", headers=h, json={"field": "method"})
+    if e.status_code == 200:
+        d = e.json()
+        print(f"  like I am 12: simple={'OK' if d['simple']['ok'] else 'refused'} | example: {(d['example'] or {}).get('text', '-')[:90]} | analogy: {(d['analogy'] or {}).get('text', '-')[:90]}")
+    q = client.post(f"/api/papers/{pid}/quiz", headers=h, json={})
+    if q.status_code == 200:
+        qs = q.json()["questions"]
+        print(f"  quiz: {len(qs)} questions (the AI made up to 5; a question without a verified quote is dropped)")
+        for item in db.review_list(pid, "quiz"):
+            print(f"      Q: {item['question'][:100]}")
+            print(f"         A: {item['answer'][:100]}  (p.{item['page']})")
+    return problems
+
+
 def main_run() -> int:
     pdfs = [Path(p) for p in args.pdfs]
     if not pdfs or not all(p.is_file() for p in pdfs):
@@ -85,6 +151,8 @@ def main_run() -> int:
             except AssertionError as e:
                 problems.append(f"{path.name}: WRONG QUOTE SHOWN AS VERIFIED. {str(e)[:200]}")
                 print("  ", problems[-1])
+            problems += check_simple_and_words(client, h, pid, got["card"], path.name)
+            problems += check_understand(client, h, pid, got["card"], path.name)
     print("\n" + "=" * 60)
     if problems:
         print("RESULT: FAILED")
