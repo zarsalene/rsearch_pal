@@ -442,6 +442,44 @@ test.describe.serial("Research Pal", () => {
   expect(text).toContain("Smith, J., & Wei, L. (2024).");
 });
 
+  test("Gaps: a true point keeps its quotes, a gap is an AI opinion, Use this gap adds a section; Coach marks a claim without a citation; Quality needs a checked quote", async ({ page }) => {
+    await signIn(page, true);
+    await page.getByRole("tab", { name: "Write" }).click();
+    await page.getByRole("tab", { name: "Gaps", exact: true }).click();
+    const gaps = page.getByRole("region", { name: "Gap finder" });
+    await gaps.getByRole("button", { name: "Find gaps" }).click();
+    await expect(gaps).toContainText("Both papers describe a method.");
+    await expect(gaps).toContainText("page 2"); // the checked quotes of the point
+    await expect(gaps).not.toContainText("Both papers use the same data."); // its second quote was false: the server dropped the point
+    await expect(gaps).toContainText("Nobody tested the systems on encrypted traffic.");
+    await expect(gaps).toContainText("AI opinion");
+    await gaps.getByRole("button", { name: /Confirm the gap/ }).click();
+    await expect(gaps).toContainText("You confirmed it");
+    await gaps.getByRole("button", { name: /Use this gap/ }).click();
+    await page.getByRole("tablist", { name: "Part of the review" }).getByRole("tab", { name: "Write" }).click();
+    await expect(page.locator(".outline .osec", { hasText: "Nobody tested the systems on encrypted traffic." })).toBeVisible();
+
+    // the coach: a claim with a number and no citation is marked. The coach gives no new text.
+    await page.locator(".outline .osec", { hasText: "Nobody tested the systems" }).click();
+    await page.getByLabel("Your text").fill("The system reaches 91.4 percent precision on the logs.\n");
+    await page.getByRole("button", { name: "Coach", exact: true }).click();
+    const panel = page.getByRole("region", { name: "Coach comments" });
+    await expect(panel).toContainText("It has no citation");
+    await expect(panel).toContainText("The coach gives no new text");
+
+    // the quality check on a card: an answer has a checked quote, or it is "Unclear"
+    await page.getByRole("tab", { name: "Card", exact: true }).click();
+    await page.getByText("AUTOMA: Multi-agent threat hunting").first().click();
+    await page.getByRole("tab", { name: "Quality" }).click();
+    await page.getByRole("button", { name: "Run the quality check" }).click();
+    const q = page.getByRole("region", { name: "Quality check" });
+    await expect(q).toContainText("AI opinion");
+    await expect(q).toContainText("We present AUTOMA");
+    await expect(q).toContainText("No checked quote");
+    await q.getByRole("button", { name: "Confirm this check" }).click();
+    await expect(q).toContainText("You confirmed this check.");
+  });
+
   test("Duck Island: play Quote Hunt, see the sources, win coins, buy an item and place it; play gives no points", async ({ page }) => {
     await signIn(page, true);
     await page.getByRole("tab", { name: "Journey" }).click();
@@ -454,9 +492,10 @@ test.describe.serial("Research Pal", () => {
     await island.getByRole("button", { name: /Go to Quote Hunt/ }).click();
     const round = page.getByRole("region", { name: "Quote Hunt" });
     const result = page.getByRole("region", { name: "Round result" });
-    for (let i = 0; i < 5; i++) {
-      await expect(round.or(result).first()).toBeVisible();
-      if (await result.isVisible()) break;
+    await expect(round).toContainText("question 1 of");
+    const total = Number(((await round.textContent()).match(/question 1 of (\d+)/) || [])[1]);
+    for (let i = 1; i <= total; i++) {
+      await expect(round).toContainText(`question ${i} of ${total}`); // wait for the next question before the next click
       await round.locator(".playoptions button").first().click();
     }
     await expect(result).toContainText("right");
@@ -470,6 +509,43 @@ test.describe.serial("Research Pal", () => {
     await island.getByRole("button", { name: "Decorate" }).click();
     await island.getByRole("button", { name: "Place at the Duck" }).click();
     expect(await points()).toBe(before); // play and shop gave no points
+  });
+
+  test("Find papers: add by DOI (and not twice), import a BibTeX file, rate the To read list", async ({ page }) => {
+    await signIn(page, true);
+    const library = page.getByRole("complementary", { name: "Library" });
+    await expect(library.getByText("AUTOMA: Multi-agent threat hunting").first()).toBeVisible(); // the library has loaded
+    const field = library.getByLabel("Add by DOI, link or title");
+    if (!(await field.isVisible())) await library.getByRole("button", { name: "Add paper", exact: true }).click();
+    await expect(field).toBeVisible();
+
+    // a paper that has a free PDF: the app reads it
+    await library.getByLabel("Add by DOI, link or title").fill("https://doi.org/10.9999/closed.1");
+    await library.getByRole("button", { name: "Add the paper" }).click();
+    await expect(page.getByText("The app is reading the paper.")).toBeVisible();
+
+    // the same paper is not added twice
+    const count = await library.locator("li").count();
+    await library.getByLabel("Add by DOI, link or title").fill("https://doi.org/10.9999/closed.1");
+    await library.getByRole("button", { name: "Add the paper" }).click();
+    await expect(page.getByText("This paper is in your library already.")).toBeVisible();
+    expect(await library.locator("li").count()).toBe(count);
+
+    // import a BibTeX file without PDFs: the entries go to the To read list
+    await page.getByRole("tab", { name: "Settings" }).click();
+    const bib = "@article{a,\n title={Deep learning finds lung cancer in X-ray images},\n author={Doe, John},\n year={2022},\n abstract={We train deep learning models to find lung cancer in X-ray images.}\n}\n@article{b,\n title={Cooking pasta with tomatoes at home},\n author={Rossi, Mario},\n year={2020},\n abstract={How to cook pasta with tomato sauce and basil for dinner.}\n}\n";
+    await page.locator('input[accept*=".bib"]').setInputFiles({ name: "lib.bib", mimeType: "text/plain", buffer: Buffer.from(bib) });
+    await page.getByRole("button", { name: "Import", exact: true }).click();
+    await expect(page.getByText("0 added to the library, 2 added to the To read list, 0 skipped")).toBeVisible();
+
+    // the To read list: the best fit is first, with a reason. A not useful item goes away.
+    await page.getByRole("tab", { name: "To read" }).click();
+    const list = page.getByRole("region", { name: "To read" });
+    await expect(list.locator(".toreaditem")).toHaveCount(2);
+    await expect(list.locator(".toreaditem").first()).toContainText("Deep learning finds lung cancer in X-ray images");
+    await expect(list.locator(".toreaditem").first()).toContainText("Fits");
+    await list.locator(".toreaditem").nth(1).getByRole("button", { name: "Not useful" }).click();
+    await expect(list.locator(".toreaditem")).toHaveCount(1);
   });
 
 });

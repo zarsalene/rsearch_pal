@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import files, auth, cards, chat, config, db, features, links, llm, mindmap, cite, companion, game, journey, metadata, pdf, play, project, quests, review, ste, today, understand, vectors, words, writing
+from . import files, bibimport, sources, triage, auth, cards, chat, config, db, features, links, llm, mindmap, cite, coach, companion, critique, game, gaps, journey, metadata, pdf, play, project, quests, review, ste, today, understand, vectors, words, writing
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -1120,6 +1120,110 @@ def paper_cite(pid: str, page: int | None = None, style: str = "apa"):
     return cite.cite(p, page, style, number)
 
 
+# ---------- gap finder, writing coach, critical reading ----------
+GAPS = [Depends(auth.require_auth), Depends(features.require("gaps"))]
+
+
+class GapRunIn(BaseModel):
+    sub_question_id: str | None = None
+    paper_ids: list[str] | None = None
+
+
+@app.post("/api/gaps", dependencies=GAPS)
+def run_gaps(body: GapRunIn):
+    """Where the papers agree, where they disagree, and the gap. A point with no verified quotes in two papers is dropped. A gap is an AI opinion."""
+    try:
+        with llm.cache_scope(""), llm.ai_context("gaps", ",".join(body.paper_ids or [])):
+            return gaps.run(body.sub_question_id, body.paper_ids)
+    except gaps.GapError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/gaps", dependencies=GAPS)
+def get_gaps(sub_question_id: str = ""):
+    run = db.gap_run_latest(sub_question_id)
+    return gaps.view(run["id"]) if run else {"run_id": None, "agree": [], "disagree": [], "gap": []}
+
+
+class GapStatusIn(BaseModel):
+    status: str
+
+
+@app.put("/api/gaps/{gid}", dependencies=GAPS)
+def put_gap(gid: str, body: GapStatusIn):
+    try:
+        out = gaps.set_status(gid, body.status)
+    except gaps.GapError as e:
+        raise HTTPException(400, str(e))
+    game_event(game.refresh)  # a confirmed gap counts for the level Connector
+    return out
+
+
+@app.post("/api/gaps/{gid}/use", dependencies=GAPS)
+def use_gap(gid: str):
+    """"Use this gap": a new section in the outline of the literature review. The heading only. You write the text."""
+    g = db.gap_get(gid)
+    if not g:
+        raise HTTPException(404, "Gap not found.")
+    return db.review_section_add(db.review_doc()["id"], " ".join(g["text"].split())[:200], g["sub_question_id"] or "")
+
+
+COACH = [Depends(auth.require_auth), Depends(features.require("coach"))]
+
+
+class CoachIn(BaseModel):
+    text: str
+
+
+@app.post("/api/coach", dependencies=COACH)
+def run_coach(body: CoachIn):
+    """Feedback on a paragraph. It gives comments with a place in the text. It gives no rewritten text."""
+    try:
+        with llm.cache_scope(""), llm.ai_context("coach", ""):
+            return coach.review(body.text)
+    except coach.CoachError as e:
+        raise HTTPException(400, str(e))
+
+
+CRIT = [Depends(auth.require_auth), Depends(features.require("critique"))]
+
+
+@app.post("/api/papers/{pid}/critique", dependencies=CRIT)
+def run_critique(pid: str):
+    must_get(pid)
+    try:
+        with llm.cache_scope(pid), llm.ai_context("critique", pid):
+            return critique.run(pid)
+    except critique.CritiqueError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/papers/{pid}/critique", dependencies=CRIT)
+def get_critique(pid: str):
+    must_get(pid)
+    return critique.view(pid) or {"items": [], "label": critique.LABEL, "paper_id": pid}
+
+
+class CritiqueEditIn(BaseModel):
+    answers: dict = {}
+    confirm: bool = False
+
+
+@app.put("/api/papers/{pid}/critique", dependencies=CRIT)
+def edit_critique(pid: str, body: CritiqueEditIn):
+    must_get(pid)
+    try:
+        out = critique.edit(pid, body.answers, body.confirm)
+    except critique.CritiqueError as e:
+        raise HTTPException(400, str(e))
+    game_event(game.refresh)  # an edited or confirmed check counts for the level Critic
+    return out
+
+
 # ---------- literature review builder ----------
 def run_writing(fn, *args):
     try:
@@ -1452,11 +1556,14 @@ def export():
             "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
             "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
             "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")],
+            "gap_runs": [{k: r[k] for k in ("id", "sub_question_id", "paper_ids", "result", "created_at")} for r in db.gap_runs_all()],
+            "gaps": [{k: g[k] for k in ("id", "sub_question_id", "text", "reason", "status", "run_id", "created_at")} for g in db.gaps_list()],
+            "critiques": [{"paper_id": c["paper_id"], "data": c["data"], "edited": c["edited"], "confirmed": c["confirmed"], "created_at": c["created_at"]} for c in db.critiques_all()],
             "review_doc": {"title": db.review_doc()["title"], "sections": [{k: s[k] for k in ("id", "position", "heading", "sub_question_id", "text")} for s in db.review_sections(db.review_doc()["id"])]},
             "review_state": db.review_state_rows(), "quests_active": db.quests_all(), "activity": db.activity_list(),
             "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
             "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list(),
-            "play_rounds": [r for r in db.play_rounds_all() if r["finished"]], "play_items": db.play_items_list()}
+            "play_rounds": [r for r in db.play_rounds_all() if r["finished"]], "play_items": db.play_items_list(), "to_read": db.to_read_list()}
 
 
 def restore_project(data: dict) -> None:
@@ -1532,6 +1639,24 @@ def import_backup(data: dict, background: BackgroundTasks):
                 db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
         except (KeyError, TypeError, ValueError):
             pass
+    for r in data.get("gap_runs") or []:  # gaps and quality checks are part of the backup. A row that exists is skipped.
+        try:
+            if str(r["id"]).isalnum() and not db.gap_run_get(str(r["id"])) and isinstance(r.get("result"), dict):
+                db.gap_run_add(str(r.get("sub_question_id") or ""), [str(p) for p in r.get("paper_ids") or []], r["result"], str(r["id"]), float(r.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for g in data.get("gaps") or []:
+        try:
+            if str(g["id"]).isalnum() and not db.gap_get(str(g["id"])) and g.get("status") in gaps.STATUSES:
+                db.gap_add(str(g.get("sub_question_id") or ""), str(g["text"])[:400], str(g.get("reason") or "")[:400], str(g.get("run_id") or ""), str(g["id"]), g["status"], float(g.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for c in data.get("critiques") or []:
+        try:
+            if db.get_paper(str(c["paper_id"])) and not db.critique_get(str(c["paper_id"])) and isinstance(c.get("data"), dict):
+                db.critique_save(str(c["paper_id"]), c["data"], bool(c.get("edited")), bool(c.get("confirmed")), float(c.get("created_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
     doc = data.get("review_doc") if isinstance(data.get("review_doc"), dict) else None
     if doc and not db.review_sections(db.review_doc()["id"]):  # a restore never replaces a document that has sections
         db.review_doc_title(str(doc.get("title") or "Literature review")[:200])
@@ -1604,6 +1729,12 @@ def import_backup(data: dict, background: BackgroundTasks):
                 db.ai_log_add(row["feature"], row["paper_id"], row["provider"], row["model"], row["time"])
         except (KeyError, TypeError, ValueError):
             pass
+    for r in data.get("to_read") or []:  # the To read list is part of the backup. An item that exists is skipped.
+        try:
+            if str(r["id"]).isalnum():
+                db.to_read_add(r, str(r["id"]), float(r.get("added_at") or 0) or None)
+        except (KeyError, TypeError, ValueError):
+            pass
     for r in data.get("play_rounds") or []:  # the coins of the mini-games are part of the backup
         try:
             rid = str(r["id"])
@@ -1655,3 +1786,211 @@ def play_buy(body: dict):
 @app.put("/api/play/items/{code}", dependencies=PLAY)
 def play_place(code: str, body: dict):
     return run_play(play.place, code, body.get("x"), body.get("y"))
+
+
+# ---------- Find papers: add by DOI, import BibTeX or RIS, the To read list (Sprint 10) ----------
+FIND = [Depends(auth.require_auth), Depends(features.require("findpapers"))]
+SOURCE_FIELDS = ("authors", "year", "venue")
+
+
+class FromIdIn(BaseModel):
+    query: str
+    add_to_read: bool = False
+
+
+def apply_source_meta(pid: str, meta: dict, verified: bool) -> None:
+    """Save the metadata of a source. It has the label of the source. A value that the PDF does not show stays in the list "Check"."""
+    p = db.get_paper(pid)
+    if not p or p.get("meta_source") == "student":
+        return  # never replace what the student wrote
+    raw = {"authors": meta.get("authors") or [], "year": meta.get("year") or "", "venue": meta.get("venue") or ""}
+    values = {"authors": [cite.parse_author(a) for a in raw["authors"][:metadata.MAX_AUTHORS] if a], "year": raw["year"] if re.fullmatch(r"(19|20)\d\d", raw["year"]) else "",
+              "venue": raw["venue"][:200], "doi": (meta.get("doi") or "").lower()}
+    if verified:
+        found = metadata.verify(raw, db.get_pages(pid))
+        check = [c for c in found["check"] if c != "doi"]  # a value that the PDF does not show stays in the list "Check"
+        if found["doi"] and not values["doi"]:
+            values["doi"] = found["doi"]
+        elif found["doi"] and found["doi"].lower() != values["doi"]:
+            check.append("doi")  # the PDF has another DOI than the one that you asked for: maybe a wrong PDF. The student must check.
+    else:
+        check = list(SOURCE_FIELDS)  # nothing is checked yet: the PDF is not here
+    metadata.save(pid, values, sorted(set(check)), meta.get("source") or "source")
+
+
+def process_from_source(pid: str, meta: dict) -> None:
+    process_paper(pid)
+    if (db.get_paper(pid) or {}).get("status") == "ready":
+        apply_source_meta(pid, meta, True)
+
+
+def write_pdf(pid: str, data: bytes) -> None:
+    try:
+        files.save(pid, data)
+    except files.StorageError as e:
+        raise HTTPException(503, str(e))
+
+
+def new_paper_from_meta(meta: dict, data: bytes | None, background: BackgroundTasks) -> dict:
+    pid = db.new_id()
+    db.add_paper(pid, (meta["title"][:80] or "paper") + ".pdf", "", "", "queued" if data else "no_pdf", meta["title"][:300])
+    apply_source_meta(pid, meta, False)
+    if data:
+        write_pdf(pid, data)
+        background.add_task(process_from_source, pid, meta)
+    return {"id": pid, "status": "queued" if data else "no_pdf", "title": meta["title"]}
+
+
+def run_sources(fn, *args):
+    try:
+        return fn(*args)
+    except sources.SourceError as e:
+        raise HTTPException(502, str(e))
+
+
+def to_read_item(meta: dict, source: str) -> dict:
+    s = triage.score(meta.get("abstract") or meta["title"])
+    return {**meta, "score": s["score"], "reason": s["reason"], "source": source}
+
+
+@app.post("/api/papers/from-id", dependencies=FIND)
+def paper_from_id(body: FromIdIn, background: BackgroundTasks):
+    """A DOI, an arXiv link or a title. The app finds the metadata and a free PDF. Without a free PDF the paper has the status no_pdf."""
+    try:
+        query = sources.parse_input(body.query)
+    except sources.SourceError as e:
+        raise HTTPException(400, str(e))
+    meta = run_sources(sources.find, query)
+    old = db.paper_exists(meta["doi"], meta["title"])
+    if old:
+        return {"id": old["id"], "status": "exists", "title": old["title"], "message": "This paper is in your library already."}
+    if body.add_to_read:
+        item = db.to_read_add(to_read_item(meta, meta["source"]))
+        return {"status": "to_read" if item else "exists", "title": meta["title"], "message": "Added to your To read list." if item else "This paper is in your To read list already."}
+    data = sources.download_pdf(meta["pdf_urls"])
+    out = new_paper_from_meta(meta, data, background)
+    out["message"] = "The app is reading the paper." if data else "No free PDF was found. The paper is in your library. Upload the PDF to read it."
+    return out
+
+
+@app.post("/api/papers/{pid}/pdf", dependencies=FIND)
+async def upload_pdf_for(pid: str, background: BackgroundTasks, file: UploadFile = File(...)):
+    """The student adds the PDF of a paper that has no PDF yet."""
+    p = must_get(pid)
+    if p["status"] != "no_pdf":
+        raise HTTPException(400, "This paper has a PDF already.")
+    data = await file.read(config.MAX_UPLOAD_BYTES + 1)
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(400, "This file is not a PDF.")
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"The file is larger than {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
+    write_pdf(pid, data)
+    db.update_paper(pid, status="queued", error="")
+    meta = {"authors": cite.authors_of(p), "year": p.get("year") or "", "venue": p.get("venue") or "", "doi": p.get("doi") or "", "source": p.get("meta_source") or "source"}
+    background.add_task(process_from_source, pid, meta)
+    return {"id": pid, "status": "queued"}
+
+
+@app.post("/api/import/bib", dependencies=FIND)
+async def import_bib(background: BackgroundTasks, file: UploadFile = File(...), pdfs: list[UploadFile] = File(default=[])):
+    """A .bib or .ris file (for example from Zotero) and, if you like, the PDFs. An entry with its PDF becomes a paper. An entry without a PDF goes to the To read list."""
+    raw = await file.read(bibimport.MAX_FILE_CHARS + 1)
+    try:
+        entries = bibimport.parse(file.filename or "", raw.decode("utf-8", "replace"))
+    except bibimport.ImportError_ as e:
+        raise HTTPException(400, str(e))
+    files: dict[str, bytes] = {}
+    for f in pdfs:
+        data = await f.read(config.MAX_UPLOAD_BYTES + 1)
+        if data.startswith(b"%PDF-") and len(data) <= config.MAX_UPLOAD_BYTES:
+            files[(f.filename or "").rsplit("/", 1)[-1]] = data
+    added = to_read = skipped = 0
+    for e in entries:
+        meta = {**e, "source": "import"}
+        if db.paper_exists(e["doi"], e["title"]):
+            skipped += 1
+            continue
+        name = bibimport.match_pdf(e, files)
+        if name:
+            new_paper_from_meta(meta, files[name], background)
+            added += 1
+        elif db.to_read_add(to_read_item(meta, "import")):
+            to_read += 1
+        else:
+            skipped += 1
+    return {"entries": len(entries), "added": added, "to_read": to_read, "skipped": skipped,
+            "message": f"{added} added to the library, {to_read} added to the To read list, {skipped} skipped (already there)."}
+
+
+def rescore_to_read() -> None:
+    """The scores depend on the question and the sub-questions. When they change, the scores are made again."""
+    import hashlib
+
+    stamp = hashlib.sha1(json.dumps([db.thesis_question(), [s["text"] for s in db.list_sub_questions()]]).encode()).hexdigest()
+    if db.get_setting("triage_stamp") == stamp:
+        return
+    tg = triage.targets()
+    for it in db.to_read_list():
+        s = triage.score(it["abstract"] or it["title"], tg)
+        db.to_read_set(it["id"], score=s["score"], reason=s["reason"])
+    db.set_setting("triage_stamp", stamp)
+
+
+@app.get("/api/to-read", dependencies=FIND)
+def get_to_read():
+    rescore_to_read()
+    return [i for i in db.to_read_list() if i["status"] == "new"]
+
+
+class ToReadIn(BaseModel):
+    status: str
+
+
+@app.put("/api/to-read/{rid}", dependencies=FIND)
+def put_to_read(rid: str, body: ToReadIn):
+    if body.status not in ("new", "not_useful"):
+        raise HTTPException(400, "The status must be new or not_useful.")
+    if not db.to_read_get(rid):
+        raise HTTPException(404, "Item not found.")
+    db.to_read_set(rid, status=body.status)
+    return db.to_read_get(rid)
+
+
+@app.post("/api/to-read/{rid}/read", dependencies=FIND)
+def read_to_read(rid: str, background: BackgroundTasks):
+    """Read now: the app looks for a free PDF. If there is none, the item stays and the student uploads the PDF."""
+    it = db.to_read_get(rid)
+    if not it:
+        raise HTTPException(404, "Item not found.")
+    old = db.paper_exists(it["doi"], it["title"])
+    if old:
+        db.to_read_set(rid, status="read")
+        return {"id": old["id"], "status": "exists"}
+    meta = {"title": it["title"], "authors": it["authors"], "year": it["year"], "venue": it["venue"], "doi": it["doi"], "abstract": it["abstract"], "source": it["source"] or "source", "pdf_urls": []}
+    try:
+        found = sources.find({"doi": it["doi"]} if it["doi"] else {"title": it["title"]})
+        meta["pdf_urls"] = found["pdf_urls"]
+    except sources.SourceError:
+        pass
+    data = sources.download_pdf(meta["pdf_urls"])
+    if not data:
+        raise HTTPException(404, "No free PDF was found. Upload the PDF yourself.")
+    out = new_paper_from_meta(meta, data, background)
+    db.to_read_set(rid, status="read")
+    return out
+
+
+@app.post("/api/to-read/{rid}/upload", dependencies=FIND)
+async def upload_to_read(rid: str, background: BackgroundTasks, file: UploadFile = File(...)):
+    it = db.to_read_get(rid)
+    if not it:
+        raise HTTPException(404, "Item not found.")
+    data = await file.read(config.MAX_UPLOAD_BYTES + 1)
+    if not data.startswith(b"%PDF-"):
+        raise HTTPException(400, "This file is not a PDF.")
+    if len(data) > config.MAX_UPLOAD_BYTES:
+        raise HTTPException(413, f"The file is larger than {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
+    meta = {"title": it["title"], "authors": it["authors"], "year": it["year"], "venue": it["venue"], "doi": it["doi"], "source": it["source"] or "source"}
+    out = new_paper_from_meta(meta, data, background)
+    db.to_read_set(rid, status="read")
+    return out

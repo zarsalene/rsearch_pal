@@ -51,3 +51,10 @@
 .playsources li.miss span{color:var(--warn);font-weight:600}
 .shoplist{list-style:none;padding:0;margin:8px 0;display:grid;gap:6px}
 .shoplist li{display:flex;align-items:center;gap:10px}
+
+/* ---- Find papers (Sprint 10) ---- */
+.toreadlist{list-style:none;padding:0;display:grid;gap:12px}
+.toreaditem{display:flex;gap:14px;border:var(--edge);border-radius:var(--r-lg);padding:12px 14px;background:var(--surface)}
+.trscore{flex:none;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--accent-soft);color:var(--accent)}
+.trbody{min-width:0}
+.idform{margin-bottom:10px}

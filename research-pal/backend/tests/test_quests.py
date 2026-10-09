@@ -65,7 +65,7 @@ def test_the_stage_changes_the_quests(client):
 def test_a_locked_feature_gives_no_quest(client, monkeypatch):
     db.init()
     assert "supervisor_pack" not in {q["code"] for q in quests.eligible("year_1")}  # the feature of Sprint 12 does not exist yet
-    assert "gap_5_lines" not in {q["code"] for q in quests.eligible("final_year")}  # the gap finder comes in Sprint 09
+    assert "gap_5_lines" in {q["code"] for q in quests.eligible("final_year")}  # the gap finder exists now (Sprint 09)
     assert "lit_section" in {q["code"] for q in quests.eligible("final_year")}  # the literature review builder exists now (Sprint 08)
     monkeypatch.setitem(features.REGISTRY, "supervisor", {"label": "Supervisor", "description": "x", "default": True})
     assert "supervisor_pack" in {q["code"] for q in quests.eligible("year_1")}  # it unlocks with its feature

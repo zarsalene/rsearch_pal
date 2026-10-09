@@ -132,6 +132,50 @@ function FeatureSwitches({ features, onFeatures, notify }) {
 }
 
 // The stage of the PhD. The student chooses it. The server keeps it.
+// Import of a BibTeX or RIS file (for example from Zotero). The PDFs are optional. An entry with its PDF becomes a paper. The rest go to the To read list.
+function BibImport({ onImported, notify }) {
+  const [bib, setBib] = useState(null);
+  const [pdfs, setPdfs] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  const go = async () => {
+    setBusy(true);
+    try {
+      const r = await api.importBib(bib, pdfs);
+      setMsg(r.message);
+      setBib(null);
+      setPdfs([]);
+      onImported();
+    } catch (err) {
+      notify(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="group">
+      <h2>Import from Zotero or BibTeX</h2>
+      <p className="muted">
+        In Zotero, export your library as BibTeX or RIS. Choose the file here. You can also choose the PDFs (for example the files folder of Zotero). An entry with its PDF becomes a paper in your library. An entry without a PDF goes to the To read list. A paper that you have already is skipped.
+      </p>
+      <div className="row">
+        <label className="btn ghost filebtn">
+          <Icon name="upload" size={15} /> {bib ? bib.name : "Choose a .bib or .ris file"}
+          <input type="file" accept=".bib,.bibtex,.ris,text/plain" hidden onChange={(e) => setBib(e.target.files[0] || null)} />
+        </label>
+        <label className="btn ghost filebtn">
+          {pdfs.length ? `${pdfs.length} PDFs chosen` : "Choose the PDFs (optional)"}
+          <input type="file" accept="application/pdf,.pdf" multiple hidden onChange={(e) => setPdfs([...e.target.files])} />
+        </label>
+        <button className="btn" disabled={!bib || busy} onClick={go}>
+          {busy ? "Importing…" : "Import"}
+        </button>
+      </div>
+      {msg && <p role="status">{msg}</p>}
+    </div>
+  );
+}
+
 function StageChoice({ project, onProject, notify }) {
   const [busy, setBusy] = useState(false);
   if (!project) return null;
@@ -259,6 +303,8 @@ export default function Settings({ config, project, features, onConfig, onProjec
           </label>
         </div>
       </div>
+
+      {features?.find((f) => f.name === "findpapers")?.enabled !== false && <BibImport onImported={onImported} notify={notify} />}
 
       <AiChoice config={config} onConfig={onConfig} notify={notify} />
 

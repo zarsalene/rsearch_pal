@@ -20,8 +20,12 @@ REGISTRY: dict[str, dict] = {
     "duck": {"label": "Duck companion", "description": "A small Duck in the Understand tab. You explain ideas to it. It gives short, kind messages.", "default": True},
     "cite": {"label": "Citations and metadata", "description": "Authors, year, venue and DOI of each paper. BibTeX and RIS export. A citation with a page number.", "default": True},
     "litreview": {"label": "Literature review builder", "description": "An outline from your sub-questions, an editor, and the checked quotes of your cards. You write the text.", "default": True},
+    "gaps": {"label": "Gap finder", "description": "Compare the papers of a sub-question: where they agree, where they disagree, and the gap. You confirm each gap.", "default": True},
+    "coach": {"label": "Writing coach", "description": "Feedback on a paragraph: clear, logical, sourced, simple style. The coach never rewrites.", "default": True},
+    "critique": {"label": "Quality check of a paper", "description": "A checklist for critical reading. Each answer has a quote, and it is an AI opinion that you can change.", "default": True},
     "avatar": {"label": "3D avatar", "description": "A small 3D character on the Journey page. It shows your level. Each level adds one item. It never gets sad.", "default": True},
     "play": {"label": "Duck Island: a game to play", "description": "A small island. Walk with the Duck, play mini-games with quotes from your papers, win coins and buy items for the island. Play gives no points and no levels.", "default": True},
+    "findpapers": {"label": "Find papers: add by DOI, import, To read", "description": "Add a paper from a DOI, an arXiv link or a title. Import a BibTeX or RIS file (for example from Zotero). A To read list with a fit score for your question.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 
