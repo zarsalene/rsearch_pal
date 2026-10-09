@@ -186,6 +186,14 @@ test.describe.serial("Research Pal", () => {
     await expect(page.getByRole("region", { name: "Where your points came from" })).toContainText("A Feynman check passed");
     await expect(page.getByRole("region", { name: "Streak" })).toContainText("1 day");
     await expect(page.getByRole("region", { name: "Records" })).toContainText("There is no ranking");
+    // the avatar: the items of the level, the next item, and a button to hide it
+    const avatar = page.getByRole("region", { name: "Avatar", exact: true });
+    await expect(avatar).toContainText("Items: Backpack.");
+    await expect(avatar).toContainText("At the next level you get: Glasses and a book.");
+    await expect(avatar.getByRole("img")).toBeVisible();
+    await avatar.getByRole("button", { name: "Hide avatar" }).click();
+    await expect(avatar).toContainText("The avatar is hidden.");
+    await avatar.getByRole("button", { name: "Show avatar" }).click();
 
     // an own reward
     await page.getByLabel("My reward").fill("A coffee");

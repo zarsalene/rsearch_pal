@@ -32,3 +32,7 @@
 
 /* Nine tabs are many. On a medium screen, only the open tab shows its label. The other tabs keep their icon and their name for screen readers. */
 @media (max-width:1500px){.tabs button[aria-selected=false] .tl{display:none}.tabs button{padding:6px 12px}}
+
+.avatar3d { width: 100%; max-width: 280px; height: 260px; margin: 0 auto; touch-action: pan-y; cursor: grab; }
+.avatar3d canvas { display: block; margin: 0 auto; }
+.avatar-flat { display: block; width: 160px; height: 200px; margin: 0 auto; }
