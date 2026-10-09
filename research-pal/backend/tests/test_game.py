@@ -344,3 +344,11 @@ def test_the_texts_of_the_game_are_kind():
     assert not re.search(r"\b(lost|lose|missed|behind|lazy|failed|late|shame|only|ranking|leaderboard|others)\b", " ".join(texts), re.I)
     source = open(game.__file__, encoding="utf-8").read()
     assert "leaderboard" not in source.lower().replace("no ranking", "") or "no ranking" in source
+
+
+def test_the_avatar_switch_is_in_the_feature_list_and_can_be_switched_off(client, auth_headers):
+    h = auth_headers
+    names = {f["name"]: f["enabled"] for f in client.get("/api/features", headers=h).json()}
+    assert names["avatar"] is True
+    client.put("/api/features", headers=h, json={"features": {"avatar": False}})
+    assert {f["name"]: f["enabled"] for f in client.get("/api/features", headers=h).json()}["avatar"] is False

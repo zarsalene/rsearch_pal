@@ -167,6 +167,16 @@ A region at 0% says **Not started** and gives a kind first step. There is no bla
 - **Duck:** in the Understand tab, the field says "Explain it to Duck". Duck shows a short, kind message after your explanation, a boss victory or a quiz. The texts are fixed. There is no AI. Click **Hide Duck**, or use the switch in Settings → Features.
 - The switches **Weekly quests and boss fights** and **Duck companion** turn these parts off. The backup file holds your quests and your bosses.
 
+## 3D avatar
+
+The Journey page shows a small 3D character. It shows your level. Each new level adds one item: a backpack, glasses and a book, a magnifying glass, a rope with a knot, a pen and a scroll, and a doctor cap with a gold star.
+
+- Turn the character with the mouse or the finger.
+- The avatar never gets sad. A lost streak changes nothing. The app never takes an item away.
+- Click **Hide avatar** to hide it. The browser keeps your choice. You can also switch the feature off in **Settings → Features**.
+- If your browser cannot show 3D, you see a flat picture with the same items.
+- The turning stops when you switch animations off or when your system asks for less motion.
+
 ## Citations and the literature review builder
 
 **Metadata.** On a card, the block **Metadata** shows the authors, the year, the venue and the DOI of the paper. Click **Fill from the PDF**.
@@ -300,7 +310,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata** and **Literature review builder**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata** and **Literature review builder** and **3D avatar**.
 
 ## Later (your list)
 

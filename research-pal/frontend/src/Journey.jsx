@@ -4,6 +4,7 @@ import { animationsOn, levelPercent, setAnimations, tzMinutes } from "./game.js"
 import ExpeditionMap from "./ExpeditionMap.jsx";
 import { QuestLog } from "./Quests.jsx";
 import { Icon } from "./icons.jsx";
+import AvatarCard from "./Avatar3D.jsx";
 
 const REWARD_HELP = "Conditions: level:3 (a level, by number), xp:500, streak:7 or cards:20.";
 const COMPARE = [
@@ -160,7 +161,7 @@ function Rewards({ rewards, onChanged, notify }) {
 }
 
 // Level, streak, badges, records and your own rewards. The points come from work that the server checked.
-export default function Journey({ notify, mapOn = false, gameOn = true, questsOn = false, onGo = () => {} }) {
+export default function Journey({ notify, mapOn = false, gameOn = true, questsOn = false, avatarOn = false, onGo = () => {} }) {
   const [game, setGame] = useState(null);
   const [anim, setAnim] = useState(animationsOn);
   const load = useCallback(async () => {
@@ -200,6 +201,7 @@ export default function Journey({ notify, mapOn = false, gameOn = true, questsOn
       {questsOn && <QuestLog notify={notify} />}
       <div className="today-grid">
         <LevelCard game={game} />
+        {avatarOn && <AvatarCard level={game.level.index} />}
         <StreakCard streak={game.streak} onWeekend={weekend} />
       </div>
 
