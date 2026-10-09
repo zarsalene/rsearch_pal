@@ -70,6 +70,15 @@ export const api = {
   makeQuiz: (id, cardId = "") => request(`/api/papers/${id}/quiz`, { method: "POST", json: { card_id: cardId || "" } }),
   quizList: (id) => request(`/api/papers/${id}/quiz`),
   answerQuiz: (rid, answer) => request(`/api/quiz/${rid}/answer`, { method: "POST", json: { answer } }),
+  // Today: goals, wins, focus timer. The date is the date of the student (YYYY-MM-DD).
+  today: (date) => request(`/api/today?date=${date}`),
+  addGoal: (goal) => request("/api/goals", { method: "POST", json: goal }),
+  updateGoal: (id, change) => request(`/api/goals/${id}`, { method: "PUT", json: change }),
+  deleteGoal: (id) => request(`/api/goals/${id}`, { method: "DELETE" }),
+  addWin: (win) => request("/api/wins", { method: "POST", json: win }),
+  wins: (limit, before) => request(`/api/wins?limit=${limit}${before ? "&before=" + before : ""}`),
+  focusStart: (body) => request("/api/focus/start", { method: "POST", json: body }),
+  focusStop: () => request("/api/focus/stop", { method: "POST" }),
   // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
   features: () => request("/api/features"),
   setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),

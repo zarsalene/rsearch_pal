@@ -7,11 +7,13 @@ const PDF = path.join(GENERATED, "a.pdf");
 const PDF_B = path.join(GENERATED, "b.pdf");
 const PASSWORD = "e2e-password-123";
 
-async function signIn(page) {
+// Today is the home page. Most tests need the cards, so signIn opens the Card tab, unless home is true.
+async function signIn(page, home = false) {
   await page.goto("/");
   await page.getByLabel("Password").fill(PASSWORD);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("tab", { name: "Settings" })).toBeVisible();
+  if (!home) await page.getByRole("tab", { name: "Card", exact: true }).click();
 }
 
 test.describe.serial("Research Pal", () => {
@@ -39,6 +41,40 @@ test.describe.serial("Research Pal", () => {
     await expect(limitation.locator(".answer").first()).not.toContainText("The system fails on encrypted traffic");
   });
 
+  test("Today is the first page: goal, next action, focus timer, win", async ({ page }) => {
+    await signIn(page, true);
+    await expect(page.getByRole("tab", { name: "Today", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("region", { name: "Next best action" })).toBeVisible();
+    await expect(page.locator(".next-text")).not.toBeEmpty();
+    await expect(page.getByRole("group", { name: "Coming soon" })).toContainText("Streak");
+
+    // goals: add one, check it
+    await page.getByLabel("New goal").fill("Read 1 paper");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByRole("checkbox", { name: "Read 1 paper" }).click(); // it changes after the server answers
+    await expect(page.getByLabel("1 of 1 done")).toBeVisible();
+
+    // focus timer: start, see the time go, stop. The server counts the minutes.
+    await page.getByLabel("What do you do?").fill("Read the method");
+    await page.getByRole("button", { name: "Start 25 minutes" }).click();
+    await expect(page.getByRole("timer")).toContainText(/2[45]:\d\d/);
+    await expect(page.getByRole("timer")).toContainText("Focus");
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "You focused for 0 minutes" })).toBeVisible(); // a very short test session
+    await expect(page.getByRole("button", { name: "Start 25 minutes" })).toBeVisible();
+
+    // the win of the day, and the past wins
+    await page.getByLabel("Your win of the day").fill("I started the focus timer.");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.locator(".win-today")).toContainText("I started the focus timer.");
+    await page.getByRole("button", { name: "Show my past wins" }).click();
+    await expect(page.getByText("No past win yet")).toBeVisible();
+
+    // the big button opens the right place
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Next best action" })).toBeVisible();
+  });
+
   test("Simple mode shows the simple text, and a link shows the original", async ({ page }) => {
     await signIn(page);
     const method = page.locator("#f-method");
@@ -53,6 +89,7 @@ test.describe.serial("Research Pal", () => {
     await expect(method.locator(".answer")).not.toContainText("Simple:");
     await page.reload(); // the browser remembers the choice
     await expect(page.getByRole("radio", { name: "Simple" })).toBeChecked();
+    await page.getByRole("tab", { name: "Card", exact: true }).click(); // after a reload the home page is Today
     await page.getByRole("radio", { name: "Expert" }).click();
     await expect(method.locator(".answer")).not.toContainText("Simple:");
   });

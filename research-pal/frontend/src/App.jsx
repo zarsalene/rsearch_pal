@@ -13,10 +13,12 @@ import { Icon, Logo } from "./icons.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 import LevelToggle from "./LevelToggle.jsx";
 import Glossary from "./Glossary.jsx";
+import Today from "./Today.jsx";
 import WordHelper from "./WordHelper.jsx";
 import { setSimpleEnabled } from "./level.js";
 
 const TABS = [
+  ["today", "Today", "target"],
   ["cards", "Card", "doc"],
   ["chat", "Chat", "chat"],
   ["search", "Search", "search"],
@@ -28,7 +30,7 @@ const TABS = [
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken());
-  const [tab, setTab] = useState("cards");
+  const [tab, setTab] = useState("today"); // Today is the home page
   const [papers, setPapers] = useState([]);
   const [selected, setSelected] = useState(null);
   const [config, setConfig] = useState(null);
@@ -118,10 +120,20 @@ export default function App() {
 
   // A feature that is switched off in Settings has no tab. While the list loads, all features show.
   const on = (name) => features?.find((f) => f.name === name)?.enabled !== false;
-  const hidden = { chat: !on("chat"), project: !on("direction"), glossary: !on("glossary") }; // a tab of a feature that is switched off
+  const hidden = { today: !on("today"), chat: !on("chat"), project: !on("direction"), glossary: !on("glossary") }; // a tab of a feature that is switched off
   const shownTabs = TABS.filter(([k]) => !hidden[k]);
   const page = hidden[tab] ? "cards" : tab;
   const paperTags = papers.find((p) => p.id === selected)?.tags || {};
+  // The big button of the Today page opens the right place.
+  const goAction = (a) => {
+    if ((a.kind === "fill" || a.kind === "explain") && a.paper_id) openPaper(a.paper_id);
+    else if (a.kind === "find_paper") setTab(on("direction") ? "project" : "cards");
+    else if (a.kind === "add_paper") {
+      setLibOpen(true);
+      setTab("cards");
+      setNotice("Click Add paper in the library. Then choose a PDF.");
+    }
+  };
 
   if (!authed) {
     return (
@@ -233,6 +245,7 @@ export default function App() {
               <Chat papers={papers} selectedId={selected} onOpenCard={openPaper} notify={setNotice} />
             </div>
           )}
+          {page === "today" && <Today papers={papers} onAction={goAction} notify={setNotice} />}
           {page === "glossary" && <Glossary reloadKey={glossKey} notify={setNotice} />}
           {tab === "search" && <Search onOpenCard={openPaper} notify={setNotice} />}
           {tab === "links" && <Graph onOpenCard={openPaper} notify={setNotice} />}
