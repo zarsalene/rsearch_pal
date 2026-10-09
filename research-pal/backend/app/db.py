@@ -76,9 +76,16 @@ def init() -> None:
             old = c.execute("SELECT value FROM settings WHERE key='thesis_question'").fetchone() if has_settings else None
             c.execute("INSERT INTO project(id,title,question,stage,updated_at) VALUES(1,'',?,'',?)", ((old["value"] if old else "") or "", time.time()))
         c.execute("UPDATE extra_cards SET status='error', error='Processing stopped (server restart). Click Retry.' WHERE status IN ('processing','queued')")
+        # Spaced review (Sprint 06): the columns of the FSRS state. Older rows get their date now (they are due).
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(review_items)")}
+        for name, typ in (("due", "REAL"), ("stability", "REAL"), ("difficulty", "REAL"), ("reps", "INTEGER DEFAULT 0"), ("lapses", "INTEGER DEFAULT 0"),
+                          ("last_review", "REAL"), ("fsrs_json", "TEXT")):
+            if name not in cols:
+                c.execute(f"ALTER TABLE review_items ADD COLUMN {name} {typ}")
+        c.execute("UPDATE review_items SET due=created_at WHERE due IS NULL")
         # A word in the glossary is also a review item (kind "glossary"). Words saved before Sprint 02 get their item now.
-        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id) "
-                  "SELECT id,'glossary',paper_id,term,explanation,CASE WHEN source='paper' THEN explanation ELSE '' END,page,created_at,id FROM glossary "
+        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id,due) "
+                  "SELECT id,'glossary',paper_id,term,explanation,CASE WHEN source='paper' THEN explanation ELSE '' END,page,created_at,id,created_at FROM glossary "
                   "WHERE id NOT IN (SELECT ref_id FROM review_items WHERE kind='glossary')")
         # Older databases have no focus column. Add it one time.
         if "focus" not in {r["name"] for r in c.execute("PRAGMA table_info(papers)")}:
@@ -166,7 +173,7 @@ def delete_paper(pid: str) -> None:
         c.execute("DELETE FROM llm_cache WHERE tag=?", (pid,))  # saved AI answers of this paper
         c.execute("DELETE FROM extra_cards WHERE paper_id=?", (pid,))
         c.execute("DELETE FROM explanations WHERE paper_id=?", (pid,))
-        c.execute("DELETE FROM review_items WHERE paper_id=? AND kind='quiz'", (pid,))  # the words of the glossary stay
+        c.execute("DELETE FROM review_items WHERE paper_id=? AND kind IN ('quiz','idea')", (pid,))  # the words of the glossary stay
 
 
 # ---------- more cards for one paper ----------
@@ -213,6 +220,7 @@ def update_extra(cid: str, **fields) -> None:
 def delete_extra(pid: str, cid: str) -> None:
     with conn() as c:
         c.execute("DELETE FROM extra_cards WHERE id=? AND paper_id=?", (cid, pid))
+        c.execute("DELETE FROM review_items WHERE paper_id=? AND kind='idea' AND card_id=?", (pid, cid))
         c.execute("DELETE FROM paper_tags WHERE paper_id=? AND card_id=?", (pid, cid))
 
 # ---------- saved AI answers ----------
@@ -626,8 +634,8 @@ def review_add(kind: str, paper_id: str, question: str, answer: str, quote: str,
                rid: str | None = None, created_at: float | None = None) -> str:
     rid = rid or new_id()
     with conn() as c:
-        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,card_id,ref_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                  (rid, kind, paper_id, question, answer, quote, int(page or 0), created_at or time.time(), card_id or "", ref_id))
+        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,card_id,ref_id,due) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                  (rid, kind, paper_id, question, answer, quote, int(page or 0), created_at or now(), card_id or "", ref_id, created_at or now()))
     return rid
 
 
@@ -649,6 +657,37 @@ def review_list(paper_id: str | None = None, kind: str | None = None) -> list[di
         return [dict(r) for r in c.execute(q + " ORDER BY created_at, rowid", args)]
 
 
+def review_apply(rid: str, s: dict) -> None:
+    """Save the FSRS state after an answer."""
+    with conn() as c:
+        c.execute("UPDATE review_items SET due=?, stability=?, difficulty=?, reps=?, lapses=?, last_review=?, fsrs_json=? WHERE id=?",
+                  (s["due"], s["stability"], s["difficulty"], s["reps"], s["lapses"], s["last_review"], s["fsrs_json"], rid))
+
+
+def review_state_rows() -> list[dict]:
+    """The schedule of every item, for the backup."""
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT id, kind, ref_id, paper_id, due, stability, difficulty, reps, lapses, last_review, fsrs_json FROM review_items "
+                                           "WHERE reps > 0 OR fsrs_json IS NOT NULL")]
+
+
+def review_restore_state(row: dict) -> bool:
+    """Put a saved schedule on the item with the same id, or the same kind and ref_id (the words and the main ideas get new ids when they are made again)."""
+    with conn() as c:
+        r = c.execute("SELECT id FROM review_items WHERE id=?", (row["id"],)).fetchone() or \
+            (c.execute("SELECT id FROM review_items WHERE kind=? AND ref_id=? AND ref_id!=''", (row["kind"], row["ref_id"])).fetchone() if row.get("ref_id") else None)
+        if not r:
+            return False
+        c.execute("UPDATE review_items SET due=?, stability=?, difficulty=?, reps=?, lapses=?, last_review=?, fsrs_json=? WHERE id=?",
+                  (row["due"], row["stability"], row["difficulty"], row["reps"], row["lapses"], row["last_review"], row["fsrs_json"], r["id"]))
+        return True
+
+
+def xp_events_of(action: str) -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT id, date, ref_id, xp FROM xp_events WHERE action=?", (action,))]
+
+
 def review_mark(rid: str, mark: str) -> None:
     with conn() as c:
         c.execute("UPDATE review_items SET last_mark=?, tries=tries+1 WHERE id=?", (mark, rid))
@@ -664,8 +703,8 @@ def glossary_add(term: str, explanation: str, source: str, paper_id: str, page: 
         gid = gid or new_id()
         c.execute("INSERT INTO glossary(id,term,explanation,source,paper_id,page,created_at) VALUES(?,?,?,?,?,?,?)",
                   (gid, term, explanation, source, paper_id, int(page or 0), created_at or time.time()))
-        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id) VALUES(?,?,?,?,?,?,?,?,?)",
-                  (new_id(), "glossary", paper_id, term, explanation, explanation if source == "paper" else "", int(page or 0), created_at or time.time(), gid))
+        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id,due) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                  (new_id(), "glossary", paper_id, term, explanation, explanation if source == "paper" else "", int(page or 0), created_at or now(), gid, created_at or now()))
         return dict(c.execute("SELECT * FROM glossary WHERE id=?", (gid,)).fetchone())
 
 

@@ -199,6 +199,44 @@ test.describe.serial("Research Pal", () => {
     await expect(page.getByLabel("Streak", { exact: true })).toContainText("1 day");
   });
 
+  test("Review: water the plants, the count goes down, the garden is fresh; the map shows the road", async ({ page }) => {
+    await signIn(page, true);
+    const tile = page.locator(".soon[aria-label=\"Review\"]"); // the box on the Today page
+    await expect(tile).toContainText(/\d+ items? due/);
+    const due = Number((await tile.textContent()).match(/(\d+) items? due/)[1]);
+    expect(due).toBeGreaterThanOrEqual(3); // the main idea of the card and the 2 quiz questions
+    await tile.getByRole("button", { name: "Water your plants" }).click();
+    await expect(page.getByRole("heading", { name: "Review", level: 1 })).toBeVisible();
+    await expect(page.getByLabel("Knowledge Garden").getByRole("button").first()).toHaveClass(/plant ok/);
+    await page.getByRole("button", { name: /^Review \d+ due/ }).click();
+
+    for (let n = 1; n <= due; n++) {
+      await expect(page.getByText(`Item ${n} of ${due}`)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Good", exact: true })).toHaveCount(0); // the student thinks first
+      await page.getByRole("button", { name: "Show answer" }).click();
+      await page.getByRole("button", { name: "Good", exact: true }).click();
+    }
+    await expect(page.getByRole("status")).toContainText(`You reviewed ${due} items.`);
+    await page.getByRole("button", { name: "Back to the garden" }).click();
+    await expect(page.getByRole("button", { name: "Nothing is due today" })).toBeDisabled();
+    await expect(page.getByLabel("Knowledge Garden").getByRole("button").first()).toHaveClass(/plant fresh/);
+
+    await page.getByRole("tab", { name: "Today", exact: true }).click();
+    await expect(page.locator(".soon[aria-label=\"Review\"]")).toContainText("0 items due");
+
+    // the Expedition map
+    await page.getByRole("tab", { name: "Journey" }).click();
+    const map = page.getByRole("region", { name: "PhD Expedition map" });
+    await expect(map.getByRole("group", { name: /Map of the PhD road/ })).toBeVisible();
+    await map.locator("g.region").first().click(); // Question Peak
+    await expect(page.getByRole("region", { name: /Question Peak: what to do/ })).toContainText("First step");
+    await map.locator("g.region").nth(2).click(); // Method Workshop: a later sprint
+    await expect(page.getByRole("region", { name: /Method Workshop: what to do/ })).toContainText("later sprint");
+    for (const name of ["Method Workshop", "Data Mines", "Writing Coast", "Defense Castle"]) {
+      await expect(map.getByRole("button", { name: new RegExp(name + ", 0%, Not started") })).toBeVisible(); // these features come in later sprints
+    }
+  });
+
   test("a feature switch hides the Chat tab and brings it back", async ({ page }) => {
     await signIn(page);
     await expect(page.getByRole("tab", { name: "Chat" })).toBeVisible();
