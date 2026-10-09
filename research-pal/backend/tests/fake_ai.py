@@ -15,6 +15,8 @@ def default_answers(messages, max_tokens=None):
         return {"finer": {k: rate(k) for k in ("feasible", "interesting", "novel", "ethical", "relevant")},
                 "scope": {"status": "too_wide" if vague else "ok", "why": "The question covers a whole field." if vague else "The scope is good."},
                 "versions": ["Can deep learning find lung cancer in X-ray images?", "Does AI cut the time of a diagnosis in a hospital?", "How do nurses use AI tools in a clinic?"]}
+    if "You read the first page of a research paper" in system:  # the metadata
+        return {"authors": ["Jane Smith", "Li Wei"], "year": "2024", "venue": "Journal of Cyber Tests"}
     if "You check an explanation" in system or "to check an explanation of a paper" in system:  # the Feynman check
         claims = json.loads(user.split("<student_claims>")[1].split("</student_claims>")[0])
         out = []

@@ -97,6 +97,26 @@ export const api = {
   setBoss: (id, boss) => request(`/api/papers/${id}/boss`, { method: "POST", json: { boss } }),
   bosses: () => request("/api/bosses"),
   companion: (event, seed = "") => request(`/api/companion?event=${event}&seed=${encodeURIComponent(seed)}`),
+  // Citations and the literature review. The server checks the metadata against the PDF. You write the text.
+  extractMeta: (id) => request(`/api/papers/${id}/meta/extract`, { method: "POST" }),
+  editMeta: (id, meta) => request(`/api/papers/${id}/meta`, { method: "PUT", json: meta }),
+  cite: (id, page, style) => request(`/api/papers/${id}/cite?page=${page || ""}&style=${style}`),
+  reviewDoc: (style) => request(`/api/review-doc?style=${style}`),
+  makeOutline: () => request("/api/review-doc/outline", { method: "POST" }),
+  saveSection: (id, body) => request(`/api/review-doc/sections/${id}`, { method: "PUT", json: body }),
+  addSection: (heading) => request("/api/review-doc/sections", { method: "POST", json: { heading } }),
+  deleteSection: (id) => request(`/api/review-doc/sections/${id}`, { method: "DELETE" }),
+  orderSections: (ids) => request("/api/review-doc/order", { method: "PUT", json: { ids } }),
+  // Save a file that the server makes (BibTeX, RIS, Markdown, Word)
+  async download(path, filename) {
+    const res = await request(path, { raw: true });
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
   // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
   features: () => request("/api/features"),
   setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),

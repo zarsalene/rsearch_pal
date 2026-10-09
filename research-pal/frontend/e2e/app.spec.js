@@ -379,6 +379,59 @@ test.describe.serial("Research Pal", () => {
     await expect(page.getByRole("tab", { name: "Thesis" })).toBeVisible();
     await expect(page.locator(".thesisbar")).toContainText("Multi-agent threat hunting"); // the data stayed
   });
+
+  test("Write: metadata, BibTeX, outline, a section with 2 quotes and their citations, autosave, Markdown export", async ({ page }) => {
+  await signIn(page);
+  // the metadata: the server read them from the PDF and checked them
+  await page.locator(".pitem", { hasText: "AUTOMA" }).click();
+  await page.getByRole("button", { name: "Fill from the PDF" }).click();
+  await expect(page.getByRole("region", { name: "Metadata of the paper" })).toContainText("Smith, Jane; Wei, Li");
+  await expect(page.getByRole("region", { name: "Metadata of the paper" })).toContainText("2024");
+  // BibTeX export
+  const bib = page.waitForEvent("download");
+  await page.getByRole("button", { name: "BibTeX" }).click();
+  expect((await bib).suggestedFilename()).toBe("research-pal.bib");
+
+  // the outline, one section for each sub-question
+  await page.getByRole("tab", { name: "Write" }).click();
+  await page.getByRole("button", { name: "Make the outline" }).click();
+  const sections = page.locator(".outline .osec");
+  await expect(sections.first()).toBeVisible();
+  const n = await sections.count();
+  let found = false;
+  for (let i = 0; i < n && !found; i++) {
+    await sections.nth(i).click();
+    found = (await page.getByRole("button", { name: /Insert quote/ }).count()) >= 2;
+  }
+  expect(found).toBe(true); // a section has cards with checked quotes
+
+  await page.getByLabel("Your text").fill("Two papers study this question.\n");
+  await page.getByRole("button", { name: /Insert quote/ }).nth(0).click();
+  await page.getByRole("button", { name: /Insert quote/ }).nth(1).click();
+  const area = page.getByLabel("Your text");
+  const value = await area.inputValue();
+  expect(value.split("\n").filter((l) => l.startsWith("> "))).toHaveLength(2);
+  expect(value).toMatch(/\(Smith & Wei, 2024, p\. \d\)/); // the citation with the page
+  await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible(); // autosave
+
+  await page.reload(); // the text is not lost
+  await page.getByRole("tab", { name: "Write" }).click();
+  await page.locator(".outline .osec", { hasText: /\d+ words/ }).first().click();
+  const kept = await page.locator(".outline li.sel .osec").count();
+  expect(kept).toBe(1);
+
+  // export Markdown with the citations and the references
+  const md = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Export Markdown/ }).click();
+  const file = await (await md).path();
+  const text = (await import("node:fs")).readFileSync(file, "utf8");
+  expect(text).toContain("# Literature review");
+  expect(text).toContain("Two papers study this question.");
+  expect(text).toMatch(/\(Smith & Wei, 2024, p\. \d\)/);
+  expect(text).toContain("## References");
+  expect(text).toContain("Smith, J., & Wei, L. (2024).");
+});
+
 });
 
 // Select one word inside an element, like a student does with the mouse. Then the page gets the mouseup event.

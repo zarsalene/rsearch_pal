@@ -1,13 +1,13 @@
 """Research_Pal API."""
-import logging, re, sqlite3, threading, time
+import json, logging, re, sqlite3, threading, time
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, companion, game, journey, pdf, project, quests, review, ste, today, understand, vectors, words
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, cite, companion, game, journey, metadata, pdf, project, quests, review, ste, today, understand, vectors, words, writing
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -87,6 +87,11 @@ def reindex_paper(pid: str) -> None:
 
 def paper_view(p: dict) -> dict:
     p = dict(p)
+    p["authors"] = cite.authors_of(p)
+    try:
+        p["meta_check"] = json.loads(p.get("meta_check") or "[]")
+    except ValueError:
+        p["meta_check"] = []
     p["has_pdf"] = (config.PDF_DIR / f"{p['id']}.pdf").exists()
     return p
 
@@ -1054,6 +1059,148 @@ def delete_glossary(gid: str):
     return {"ok": True}
 
 
+# ---------- citations and metadata ----------
+CITE = [Depends(auth.require_auth), Depends(features.require("cite"))]
+LIT = [Depends(auth.require_auth), Depends(features.require("litreview"))]
+
+
+@app.post("/api/papers/{pid}/meta/extract", dependencies=CITE)
+def meta_extract(pid: str):
+    """Read authors, year, venue and DOI from the first pages. The server keeps only what the PDF has. A field that it could not check shows "Check"."""
+    must_get(pid)
+    try:
+        with llm.cache_scope(pid), llm.ai_context("meta", pid):
+            return paper_view(metadata.extract(pid))
+    except metadata.MetaError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+class MetaIn(BaseModel):
+    authors: list[str] | None = None
+    year: str | None = None
+    venue: str | None = None
+    doi: str | None = None
+
+
+@app.put("/api/papers/{pid}/meta", dependencies=CITE)
+def meta_edit(pid: str, body: MetaIn):
+    must_get(pid)
+    try:
+        return paper_view(metadata.edit(pid, body.model_dump(exclude_none=True)))
+    except metadata.MetaError as e:
+        raise HTTPException(400, str(e))
+
+
+def library_papers() -> list[dict]:
+    return sorted(db.list_papers(), key=lambda p: p["created_at"])
+
+
+@app.get("/api/export/bibtex", dependencies=CITE)
+def export_bibtex():
+    return Response(cite.to_bibtex(library_papers()), media_type="application/x-bibtex; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="research-pal.bib"'})
+
+
+@app.get("/api/export/ris", dependencies=CITE)
+def export_ris():
+    return Response(cite.to_ris(library_papers()), media_type="application/x-research-info-systems; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="research-pal.ris"'})
+
+
+@app.get("/api/papers/{pid}/cite", dependencies=CITE)
+def paper_cite(pid: str, page: int | None = None, style: str = "apa"):
+    """A citation with a page, for example (Smith et al., 2024, p. 3). complete=false: the author or the year is missing, check the metadata."""
+    p = must_get(pid)
+    if style not in cite.STYLES:
+        raise HTTPException(400, "The style must be apa or ieee.")
+    number = [x["id"] for x in library_papers()].index(pid) + 1
+    return cite.cite(p, page, style, number)
+
+
+# ---------- literature review builder ----------
+def run_writing(fn, *args):
+    try:
+        return fn(*args)
+    except writing.WritingError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/review-doc", dependencies=LIT)
+def get_review_doc(style: str = "apa"):
+    if style not in cite.STYLES:
+        raise HTTPException(400, "The style must be apa or ieee.")
+    return writing.view(style)
+
+
+@app.post("/api/review-doc/outline", dependencies=LIT)
+def make_outline():
+    """One section for each sub-question. Headings only. No AI text. A section that exists keeps its text."""
+    writing.outline()
+    return writing.view()
+
+
+class SectionIn(BaseModel):
+    text: str | None = None
+    heading: str | None = None
+
+
+@app.put("/api/review-doc/sections/{sid}", dependencies=LIT)
+def put_section(sid: str, body: SectionIn):
+    s = run_writing(writing.save_text, sid, body.text, body.heading)
+    game_event(game.refresh)  # 300 words in a section count for the level Author
+    return {**s, "words": writing.count_words(s["text"]), "unverified_quotes": [q["line"] for q in writing.check_quotes(s["text"]) if not q["found"]], "words_today": db.words_on(game.local_date(db.now()))}
+
+
+@app.post("/api/review-doc/sections", dependencies=LIT)
+def add_section(body: SectionIn):
+    heading = " ".join((body.heading or "").split())
+    if not heading or len(heading) > 200:
+        raise HTTPException(400, "The heading must have 1 to 200 characters.")
+    return db.review_section_add(db.review_doc()["id"], heading)
+
+
+@app.delete("/api/review-doc/sections/{sid}", dependencies=LIT)
+def delete_section(sid: str):
+    if not db.review_section_delete(sid):
+        raise HTTPException(404, "Section not found.")
+    return {"ok": True}
+
+
+class OrderIn(BaseModel):
+    ids: list[str]
+
+
+@app.put("/api/review-doc/order", dependencies=LIT)
+def put_order(body: OrderIn):
+    db.review_sections_order(db.review_doc()["id"], body.ids)
+    return writing.view()
+
+
+class DocTitleIn(BaseModel):
+    title: str
+
+
+@app.put("/api/review-doc/title", dependencies=LIT)
+def put_doc_title(body: DocTitleIn):
+    title = " ".join(body.title.split())
+    if not title or len(title) > 200:
+        raise HTTPException(400, "The title must have 1 to 200 characters.")
+    db.review_doc_title(title)
+    return writing.view()
+
+
+@app.get("/api/review-doc/export", dependencies=LIT)
+def export_review_doc(format: str = "md", style: str = "apa"):
+    if style not in cite.STYLES:
+        raise HTTPException(400, "The style must be apa or ieee.")
+    if format == "md":
+        return Response(writing.export_markdown(style), media_type="text/markdown; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="literature-review.md"'})
+    if format == "docx":
+        return Response(writing.export_docx(style), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        headers={"Content-Disposition": 'attachment; filename="literature-review.docx"'})
+    raise HTTPException(400, "The format must be md or docx.")
+
+
 # ---------- Quests, boss fights, companion ----------
 QUESTS = [Depends(auth.require_auth), Depends(features.require("quests"))]
 
@@ -1293,6 +1440,7 @@ def export():
         d["extra_cards"] = [{"id": x["id"], "focus": x["focus"], "purpose": x["purpose"], "card": x["card"]} for x in db.list_extra(p["id"]) if x["card"]]
         d["tags"] = tags.get(p["id"], {})
         d["is_boss"], d["boss_defeated_at"] = int(p.get("is_boss") or 0), p.get("boss_defeated_at")
+        d["meta"] = {k: p.get(k) or "" for k in ("authors", "year", "venue", "doi", "cite_key", "meta_check", "meta_source")}
         papers.append(d)
     proj = db.get_project()
     glossary = [{k: g[k] for k in ("id", "term", "explanation", "source", "paper_id", "page", "created_at")} for g in db.glossary_list()]
@@ -1301,6 +1449,7 @@ def export():
             "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
             "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
             "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")],
+            "review_doc": {"title": db.review_doc()["title"], "sections": [{k: s[k] for k in ("id", "position", "heading", "sub_question_id", "text")} for s in db.review_sections(db.review_doc()["id"])]},
             "review_state": db.review_state_rows(), "quests_active": db.quests_all(), "activity": db.activity_list(),
             "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
             "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list()}
@@ -1343,6 +1492,11 @@ def import_backup(data: dict, background: BackgroundTasks):
         db.add_paper(pid, str(d.get("filename", "paper.pdf"))[:200], str(d.get("purpose", ""))[:500], str(d.get("focus") or "")[:200])
         db.update_paper(pid, title=str(d.get("title", ""))[:300], n_pages=int(d.get("n_pages") or 0), status="queued",
                         is_boss=1 if d.get("is_boss") else 0, boss_defeated_at=d.get("boss_defeated_at"))
+        meta = d.get("meta") if isinstance(d.get("meta"), dict) else {}
+        if meta:
+            db.update_paper(pid, authors=str(meta.get("authors") or "[]")[:4000], year=str(meta.get("year") or "")[:4], venue=str(meta.get("venue") or "")[:200],
+                            doi=str(meta.get("doi") or "")[:200], cite_key=str(meta.get("cite_key") or "")[:100], meta_check=str(meta.get("meta_check") or "[]")[:200],
+                            meta_source=str(meta.get("meta_source") or "")[:20])
         db.save_pages(pid, [str(t) for t in d.get("pages", [])])
         if isinstance(d.get("card"), dict):
             db.save_card(pid, d["card"])
@@ -1374,6 +1528,12 @@ def import_backup(data: dict, background: BackgroundTasks):
                 db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
         except (KeyError, TypeError, ValueError):
             pass
+    doc = data.get("review_doc") if isinstance(data.get("review_doc"), dict) else None
+    if doc and not db.review_sections(db.review_doc()["id"]):  # a restore never replaces a document that has sections
+        db.review_doc_title(str(doc.get("title") or "Literature review")[:200])
+        for s in (doc.get("sections") or [])[:200]:
+            if isinstance(s, dict) and str(s.get("heading", "")).strip():
+                db.review_section_add(db.review_doc()["id"], str(s["heading"])[:200], str(s.get("sub_question_id") or ""), str(s.get("text") or "")[:writing.MAX_TEXT], str(s["id"]) if str(s.get("id", "")).isalnum() else None)
     for q in data.get("quests_active") or []:  # quests and bosses are part of the backup
         try:
             if quests.by_code(q["code"]) and str(q["id"]).isalnum():
