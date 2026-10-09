@@ -4,7 +4,7 @@ from reportlab.pdfgen import canvas
 
 PAPERS = {
     "a.pdf": ("AUTOMA: Multi-agent threat hunting", [
-        "AUTOMA: Multi-agent threat hunting\nAbstract\nWe present AUTOMA, a multi agent system for cyber threat hunting. Analysts spend many hours on manual log review and miss attacks.",
+        "AUTOMA: Multi-agent threat hunting\nJane Smith and Li Wei\nJournal of Cyber Tests, 2024\ndoi:10.1234/automa.2024.01\nAbstract\nWe present AUTOMA, a multi agent system for cyber threat hunting. Analysts spend many hours on manual log review and miss attacks.",
         "Method\nOur system uses a hypothesis agent and a validation agent. The hypothesis agent reads Sysmon logs and proposes attack hypotheses that map to MITRE ATT&CK techniques.\nA hypothesis is a short claim about a possible attack. The validation agent tests each hypothesis.",
         "Results\nOn the OpTC dataset, AUTOMA reaches a precision of 91.4 percent and a recall of 84.2 percent. The baseline reaches 72.0 percent precision on the same logs.\nLimitations\nWe test only on one dataset. Future work will add more datasets and real networks.",
         "Conclusion\nThe multi agent design reduces manual work for threat hunting analysts.\nReferences\n[1] Smith. Old paper about firewalls. 2001.",

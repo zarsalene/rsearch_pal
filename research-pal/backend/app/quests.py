@@ -177,7 +177,9 @@ def progress(q: dict, start: dt.date, end: dt.date) -> tuple[int, int]:
         tagged = {s for by_card in tags.values() for ids in by_card.values() for s in ids}
         return sum(1 for s in subs if s["id"] in tagged), max(len(subs), 1)
     if t in ("lit_sections", "gap_written", "pack_sent"):  # the features of later sprints. 0 until their tables exist
-        return _count_table({"lit_sections": "lit_sections", "gap_written": "gap_notes", "pack_sent": "packs_sent"}[t]), need
+        if t == "lit_sections":
+            return db.sections_written(300), need
+        return _count_table({"gap_written": "gap_notes", "pack_sent": "packs_sent"}[t]), need
     return 0, need
 
 

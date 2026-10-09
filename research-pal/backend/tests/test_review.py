@@ -287,9 +287,8 @@ def test_the_regions_of_later_sprints_wait_for_their_tables(client):
     assert journey.method_workshop()["percent"] == journey.data_mines()["percent"] == journey.writing_coast()["percent"] == journey.defense_castle()["percent"] == 0
     with db.conn() as c:  # a later sprint makes these tables
         c.execute("CREATE TABLE journal(id TEXT, kind TEXT)")
-        c.execute("CREATE TABLE lit_sections(id TEXT)")
         c.executemany("INSERT INTO journal VALUES(?,?)", [(str(i), "idea") for i in range(5)] + [("e1", "experiment")])
-        c.execute("INSERT INTO lit_sections VALUES('s1')")
+    db.review_section_add(db.review_doc()["id"], "A section", "", "word " * 300)  # the literature review builder (Sprint 08)
     assert journey.method_workshop()["percent"] == 50 and journey.data_mines()["percent"] == 10 and journey.writing_coast()["percent"] == 20
 
 

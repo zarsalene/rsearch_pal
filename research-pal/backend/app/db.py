@@ -60,6 +60,12 @@ def init() -> None:
             CREATE TABLE IF NOT EXISTS focus_sessions(
               id TEXT PRIMARY KEY, start REAL, end REAL, minutes INTEGER DEFAULT 0, task_text TEXT, paper_id TEXT DEFAULT '',
               date TEXT, planned INTEGER DEFAULT 0, goal_id TEXT DEFAULT '');
+            CREATE TABLE IF NOT EXISTS review_doc(
+              id TEXT PRIMARY KEY, title TEXT, updated_at REAL);
+            CREATE TABLE IF NOT EXISTS review_sections(
+              id TEXT PRIMARY KEY, doc_id TEXT, position INTEGER, heading TEXT, sub_question_id TEXT DEFAULT '', text TEXT DEFAULT '', updated_at REAL);
+            CREATE TABLE IF NOT EXISTS writing_log(
+              id TEXT PRIMARY KEY, date TEXT, section_id TEXT, delta INTEGER, time REAL);
             CREATE TABLE IF NOT EXISTS quests_active(
               id TEXT PRIMARY KEY, code TEXT, week TEXT, chosen_at REAL, done_at REAL, UNIQUE(code, week));
             CREATE TABLE IF NOT EXISTS activity(
@@ -93,7 +99,9 @@ def init() -> None:
                   "WHERE id NOT IN (SELECT ref_id FROM review_items WHERE kind='glossary')")
         # Bosses (Sprint 07): a paper can be marked as a boss. The date of the victory stays.
         paper_cols = {r["name"] for r in c.execute("PRAGMA table_info(papers)")}
-        for name, typ in (("is_boss", "INTEGER DEFAULT 0"), ("boss_defeated_at", "REAL")):
+        for name, typ in (("is_boss", "INTEGER DEFAULT 0"), ("boss_defeated_at", "REAL"), ("authors", "TEXT DEFAULT '[]'"), ("year", "TEXT DEFAULT ''"),
+                          ("venue", "TEXT DEFAULT ''"), ("doi", "TEXT DEFAULT ''"), ("cite_key", "TEXT DEFAULT ''"), ("meta_check", "TEXT DEFAULT '[]'"),
+                          ("meta_source", "TEXT DEFAULT ''")):
             if name not in paper_cols:
                 c.execute(f"ALTER TABLE papers ADD COLUMN {name} {typ}")
         # Older databases have no focus column. Add it one time.
@@ -378,6 +386,79 @@ def coverage() -> dict:
         total = c.execute("SELECT COUNT(*) AS n FROM papers").fetchone()["n"]
         tagged = c.execute("SELECT COUNT(DISTINCT paper_id) AS n FROM paper_tags").fetchone()["n"]
     return {"sub_questions": [dict(r) for r in rows], "papers": total, "untagged": total - tagged}
+# ---------- literature review: one document, sections, the words of each day (Sprint 08) ----------
+def review_doc() -> dict:
+    with conn() as c:
+        r = c.execute("SELECT * FROM review_doc ORDER BY rowid LIMIT 1").fetchone()
+        if not r:
+            c.execute("INSERT INTO review_doc(id,title,updated_at) VALUES(?,?,?)", (new_id(), "Literature review", now()))
+            r = c.execute("SELECT * FROM review_doc ORDER BY rowid LIMIT 1").fetchone()
+    return dict(r)
+
+
+def review_doc_title(title: str) -> None:
+    d = review_doc()
+    with conn() as c:
+        c.execute("UPDATE review_doc SET title=?, updated_at=? WHERE id=?", (title, now(), d["id"]))
+
+
+def review_sections(doc_id: str) -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM review_sections WHERE doc_id=? ORDER BY position, rowid", (doc_id,))]
+
+
+def review_section_get(sid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM review_sections WHERE id=?", (sid,)).fetchone()
+    return dict(r) if r else None
+
+
+def review_section_add(doc_id: str, heading: str, sub_question_id: str = "", text: str = "", sid: str | None = None) -> dict:
+    sid = sid or new_id()
+    with conn() as c:
+        n = c.execute("SELECT COUNT(*) AS n FROM review_sections WHERE doc_id=?", (doc_id,)).fetchone()["n"]
+        c.execute("INSERT INTO review_sections(id,doc_id,position,heading,sub_question_id,text,updated_at) VALUES(?,?,?,?,?,?,?)", (sid, doc_id, n, heading, sub_question_id, text, now()))
+    return review_section_get(sid)
+
+
+def review_section_update(sid: str, **fields) -> None:
+    allowed = {k: v for k, v in fields.items() if k in ("text", "heading")}
+    if allowed:
+        with conn() as c:
+            c.execute(f"UPDATE review_sections SET {', '.join(f'{k}=?' for k in allowed)}, updated_at=? WHERE id=?", (*allowed.values(), now(), sid))
+
+
+def review_section_delete(sid: str) -> bool:
+    with conn() as c:
+        return c.execute("DELETE FROM review_sections WHERE id=?", (sid,)).rowcount > 0
+
+
+def review_sections_order(doc_id: str, ids: list[str]) -> None:
+    with conn() as c:
+        have = [r["id"] for r in c.execute("SELECT id FROM review_sections WHERE doc_id=? ORDER BY position, rowid", (doc_id,))]
+        final = [i for i in ids if i in have] + [i for i in have if i not in ids]
+        c.executemany("UPDATE review_sections SET position=? WHERE id=?", [(n, i) for n, i in enumerate(final)])
+
+
+def sections_written(min_words: int) -> int:
+    """Sections with at least this many words of the student (quote lines do not count)."""
+    n = 0
+    for s in review_sections(review_doc()["id"]):
+        if sum(len(line.split()) for line in (s["text"] or "").splitlines() if not line.lstrip().startswith(">")) >= min_words:
+            n += 1
+    return n
+
+
+def writing_log_add(date: str, section_id: str, delta: int) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO writing_log(id,date,section_id,delta,time) VALUES(?,?,?,?,?)", (new_id(), date, section_id, delta, now()))
+
+
+def words_on(date: str) -> int:
+    with conn() as c:
+        return c.execute("SELECT COALESCE(SUM(delta),0) AS n FROM writing_log WHERE date=?", (date,)).fetchone()["n"]
+
+
 # ---------- quests, bosses, activity (Sprint 07) ----------
 def quests_week(week: str) -> list[dict]:
     with conn() as c:
@@ -552,9 +633,11 @@ def badge_restore(code: str, when: float) -> None:
 
 # ---------- goals, wins and focus sessions (the Today page) ----------
 def goals_list(date: str) -> list[dict]:
+    """The goals of one day. A goal of the kind "words" shows the words that you wrote in the literature review today."""
     with conn() as c:
         rows = c.execute("SELECT * FROM goals WHERE date=? ORDER BY created_at, rowid", (date,)).fetchall()
-    return [{**dict(r), "done": bool(r["done"])} for r in rows]
+    words = words_on(date) if any(r["kind"] == "words" for r in rows) else 0
+    return [{**dict(r), "done": bool(r["done"]), "progress": words if r["kind"] == "words" else None} for r in rows]
 
 
 def goal_add(date: str, text: str, kind: str, target: int, gid: str | None = None, done: bool = False, created_at: float | None = None) -> dict:

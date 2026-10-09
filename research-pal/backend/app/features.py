@@ -18,6 +18,8 @@ REGISTRY: dict[str, dict] = {
     "map": {"label": "PhD Expedition map", "description": "A map of the PhD road with six regions. Each region fills with color as you work.", "default": True},
     "quests": {"label": "Weekly quests and boss fights", "description": "Each week you choose up to 2 of 3 quests. Mark a hard paper as a boss and defeat it. A quest you do not finish has no penalty.", "default": True},
     "duck": {"label": "Duck companion", "description": "A small Duck in the Understand tab. You explain ideas to it. It gives short, kind messages.", "default": True},
+    "cite": {"label": "Citations and metadata", "description": "Authors, year, venue and DOI of each paper. BibTeX and RIS export. A citation with a page number.", "default": True},
+    "litreview": {"label": "Literature review builder", "description": "An outline from your sub-questions, an editor, and the checked quotes of your cards. You write the text.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 

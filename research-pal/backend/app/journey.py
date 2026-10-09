@@ -57,9 +57,9 @@ def data_mines() -> dict:
 
 
 def writing_coast() -> dict:
-    n = _count("lit_sections")  # the literature review builder comes in a later sprint
-    return {"percent": _pct(min(n, 5) / 5), "target": "today", "first_step": "The literature review builder comes in a later sprint. Then you can write your first section here." if n == 0 else "Write the next section.",
-            "detail": f"{n} sections written." if n else "Not available yet."}
+    n = db.sections_written(300)  # sections of 300 words or more that you wrote in the literature review
+    return {"percent": _pct(min(n, 5) / 5), "target": "write", "first_step": "Open the Write tab. Make the outline from your sub-questions. Write your first section." if n == 0 else "Write the next section.",
+            "detail": f"{n} sections of 300 words or more." if n else "No section of 300 words yet."}
 
 
 def defense_castle() -> dict:
