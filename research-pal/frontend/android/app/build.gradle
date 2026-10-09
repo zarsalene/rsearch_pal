@@ -7,7 +7,8 @@ android {
         applicationId "tn.microzed.researchpal"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        // Each build gets a higher number (the run number of GitHub), so a new APK can be installed over the old one.
+        versionCode Integer.parseInt(System.getenv("RP_VERSION_CODE") ?: "1")
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -16,8 +17,21 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // The key comes from the environment (GitHub secrets). It is never in the repository.
+            if (System.getenv("RP_KEYSTORE_FILE")) {
+                storeFile file(System.getenv("RP_KEYSTORE_FILE"))
+                storeType "pkcs12"
+                storePassword System.getenv("RP_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("RP_KEY_ALIAS")
+                keyPassword System.getenv("RP_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

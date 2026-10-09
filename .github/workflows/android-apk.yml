@@ -1,5 +1,6 @@
-# Builds an Android APK that you can install on a phone. Start it by hand (Actions > Android APK > Run workflow) or by a push that changes this file.
+# Builds a signed release APK that you can install on a phone. Start it by hand (Actions > Android APK > Run workflow) or by a push that changes this file.
 # The server address is the repository variable API_URL. If it is not set, the Render address below is used.
+# The signing key comes from 4 secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
 # For the sign-in with Supabase, set the repository variable SUPABASE_ANON_KEY (the public anon key).
 name: Android APK
 
@@ -13,7 +14,7 @@ on:
 
 jobs:
   apk:
-    name: Build the debug APK
+    name: Build the release APK
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,10 +37,39 @@ jobs:
       - run: npm ci
       - run: npx vite build
       - run: npx cap sync android
+      - name: Prepare the signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KS="$RUNNER_TEMP/release.p12"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$KS"
+            ALIAS="$KS_ALIAS"; PASS="$KS_PASS"; KPASS="${KS_KEY_PASS:-$KS_PASS}"
+          else
+            echo "::warning::No signing secrets found. This APK has a one-time key. To update the app later, you must uninstall it first. Add the 4 ANDROID_* secrets for a permanent key."
+            ALIAS=temporary; PASS=$(openssl rand -hex 12); KPASS=$PASS
+            keytool -genkeypair -storetype pkcs12 -keystore "$KS" -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$KPASS" -dname "CN=Research Pal temporary"
+          fi
+          {
+            echo "RP_KEYSTORE_FILE=$KS"
+            echo "RP_KEYSTORE_PASSWORD=$PASS"
+            echo "RP_KEY_ALIAS=$ALIAS"
+            echo "RP_KEY_PASSWORD=$KPASS"
+            echo "RP_VERSION_CODE=${{ github.run_number }}"
+          } >> "$GITHUB_ENV"
       - run: chmod +x android/gradlew
-      - run: ./gradlew assembleDebug
+      - run: ./gradlew assembleRelease
+        working-directory: research-pal/frontend/android
+      - name: Check the signature
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)/apksigner" verify --print-certs "$APK"
+          cp "$APK" Research-Pal.apk
         working-directory: research-pal/frontend/android
       - uses: actions/upload-artifact@v4
         with:
-          name: research-pal-debug-apk
-          path: research-pal/frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          name: research-pal-apk
+          path: research-pal/frontend/android/Research-Pal.apk
