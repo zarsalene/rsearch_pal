@@ -12,6 +12,10 @@ on:
       - .github/workflows/android-apk.yml
       - research-pal/frontend/**
 
+# The release step needs the right to write releases.
+permissions:
+  contents: write
+
 jobs:
   apk:
     name: Build the release APK
@@ -73,3 +77,19 @@ jobs:
         with:
           name: research-pal-apk
           path: research-pal/frontend/android/Research-Pal.apk
+      # A public download link, without a zip and without a login:
+      # https://github.com/${{ github.repository }}/releases/download/android-latest/Research-Pal.apk
+      - name: Publish the download link
+        working-directory: research-pal/frontend/android
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG=android-latest
+          NOTES="Build ${{ github.run_number }}, commit ${GITHUB_SHA::7}. Open this page on your phone, tap Research-Pal.apk, then install."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes "$NOTES"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "Research Pal for Android" --notes "$NOTES"
+          fi
+          gh release upload "$TAG" Research-Pal.apk --clobber
