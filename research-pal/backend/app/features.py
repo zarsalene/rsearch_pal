@@ -15,6 +15,7 @@ REGISTRY: dict[str, dict] = {
     "today": {"label": "Today page", "description": "The home page: your goal, three tasks, one next best action, a focus timer and your wins.", "default": True},
     "game": {"label": "Game: points, levels and streak", "description": "Points for real work that the server checks. Levels, a kind streak, badges and your own rewards.", "default": True},
     "review": {"label": "Knowledge Garden: spaced review", "description": "Review your cards, words and quiz questions on the right day. One plant for each paper.", "default": True},
+    "map": {"label": "PhD Expedition map", "description": "A map of the PhD road with six regions. Each region fills with color as you work.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 

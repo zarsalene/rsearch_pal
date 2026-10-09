@@ -6,5 +6,6 @@ import "./simple-words.css";
 import "./understand.css";
 import "./today.css";
 import "./game.css";
+import "./review.css";
 
 createRoot(document.getElementById("root")).render(<App />);

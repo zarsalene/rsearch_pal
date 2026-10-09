@@ -1081,7 +1081,7 @@ def review_rate(item_id: str, body: RatingIn):
     return out
 
 
-@app.get("/api/journey/map", dependencies=[Depends(auth.require_auth), Depends(features.require("review"))])
+@app.get("/api/journey/map", dependencies=[Depends(auth.require_auth), Depends(features.require("map"))])
 def journey_map():
     """The six regions of the PhD road, each with a percent, a state and a kind first step."""
     return journey.build()

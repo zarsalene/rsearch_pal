@@ -15,6 +15,7 @@ import LevelToggle from "./LevelToggle.jsx";
 import Glossary from "./Glossary.jsx";
 import Today from "./Today.jsx";
 import Journey from "./Journey.jsx";
+import Review from "./Review.jsx";
 import GameWatcher from "./GameWatcher.jsx";
 import { applyAnimations } from "./game.js";
 import WordHelper from "./WordHelper.jsx";
@@ -22,6 +23,7 @@ import { setSimpleEnabled } from "./level.js";
 
 const TABS = [
   ["today", "Today", "target"],
+  ["review", "Review", "refresh"],
   ["journey", "Journey", "chart"],
   ["cards", "Card", "doc"],
   ["chat", "Chat", "chat"],
@@ -125,7 +127,7 @@ export default function App() {
 
   // A feature that is switched off in Settings has no tab. While the list loads, all features show.
   const on = (name) => features?.find((f) => f.name === name)?.enabled !== false;
-  const hidden = { today: !on("today"), journey: !on("game"), chat: !on("chat"), project: !on("direction"), glossary: !on("glossary") }; // a tab of a feature that is switched off
+  const hidden = { today: !on("today"), review: !on("review"), journey: !on("game") && !on("map"), chat: !on("chat"), project: !on("direction"), glossary: !on("glossary") }; // a tab of a feature that is switched off
   const shownTabs = TABS.filter(([k]) => !hidden[k]);
   const page = hidden[tab] ? "cards" : tab;
   const paperTags = papers.find((p) => p.id === selected)?.tags || {};
@@ -250,8 +252,9 @@ export default function App() {
               <Chat papers={papers} selectedId={selected} onOpenCard={openPaper} notify={setNotice} />
             </div>
           )}
-          {page === "today" && <Today papers={papers} onAction={goAction} gameOn={on("game")} notify={setNotice} />}
-          {page === "journey" && <Journey notify={setNotice} />}
+          {page === "today" && <Today papers={papers} onAction={goAction} gameOn={on("game")} reviewOn={on("review")} onOpenReview={() => setTab("review")} notify={setNotice} />}
+          {page === "review" && <Review notify={setNotice} />}
+          {page === "journey" && <Journey notify={setNotice} mapOn={on("map")} gameOn={on("game")} onGo={(target) => setTab(hidden[target] ? "cards" : target)} />}
           {page === "glossary" && <Glossary reloadKey={glossKey} notify={setNotice} />}
           {tab === "search" && <Search onOpenCard={openPaper} notify={setNotice} />}
           {tab === "links" && <Graph onOpenCard={openPaper} notify={setNotice} />}

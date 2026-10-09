@@ -216,9 +216,12 @@ def test_login_and_switch(client, auth_headers):
     for path in ("/api/review/due", "/api/review/garden", "/api/journey/map"):
         assert client.get(path).status_code == 401
     client.put("/api/features", headers=h, json={"features": {"review": False}})
-    for path in ("/api/review/due", "/api/review/garden", "/api/journey/map"):
+    for path in ("/api/review/due", "/api/review/garden"):
         assert client.get(path, headers=h).status_code == 403
     assert client.post("/api/review/x", headers=h, json={"rating": "good"}).status_code == 403
+    assert client.get("/api/journey/map", headers=h).status_code == 200  # the map has its own switch
+    client.put("/api/features", headers=h, json={"features": {"map": False}})
+    assert client.get("/api/journey/map", headers=h).status_code == 403
 
 
 def test_backup_keeps_the_dates_of_the_review(client, auth_headers, fake_ai, sample_pdfs, now):

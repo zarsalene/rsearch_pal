@@ -130,6 +130,33 @@ The **Journey** tab shows your progress. The **Today** page shows your level and
 
 The backup file holds your points, badges and rewards. The switch **Game** in Settings → Features turns the game off. While it is off, nobody gets points.
 
+## Knowledge Garden: spaced review
+
+Open the **Review** tab. Each paper is a plant. Each review item gets a date for its next review. The app uses the open **FSRS** algorithm (the algorithm of Anki) to choose the date after each of your answers.
+
+- **Items:** your quiz questions, the words of your glossary, and one **main idea** item for each card. The main idea item uses the checked problem and method of the card. Each item that comes from a paper shows a quote that the server found in the PDF. A word that the AI explained has the label **AI explanation** and no quote. A card without a verified quote makes no item.
+- **A review:** you see the question. You think. Click **Show answer**. You see the answer, the quote and the page. Then click **Again**, **Hard**, **Good** or **Easy**. A better answer gives a later date.
+- **Only due items:** an item shows up on its day. You cannot review it earlier. So each item gives points at most one time each day.
+- **Points:** 2 points for each review, 20 points each day at most.
+- **Plants:** a plant is **fresh** when nothing is due. It **needs water** when something is due. It is **a little dry** when something is 3 days or more late. A plant never dies. Click a plant to review only this paper.
+- The **Today** page has a box that shows how many items are due.
+- The backup file holds the dates of your review.
+
+## PhD Expedition map
+
+The **Journey** tab shows the whole road of your PhD as a map with six regions. Each region fills with color as you work. Click a region to see a first step.
+
+| Region | It fills with |
+|--------|---------------|
+| Question Peak | Your title, your question and your sub-questions. |
+| Literature Forest | Cards with checked quotes and Feynman checks passed, for each sub-question. |
+| Method Workshop | The research journal (a later sprint). |
+| Data Mines | The experiments in the journal (a later sprint). |
+| Writing Coast | The sections of your literature review (a later sprint). |
+| Defense Castle | Your thesis outline and your defense practice (later). |
+
+A region at 0% says **Not started** and gives a kind first step. There is no blame. On a phone, a list below the picture shows the same data. The switches **Knowledge Garden** and **PhD Expedition map** in Settings → Features turn these parts off.
+
 ## AI use log
 
 The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.
@@ -241,7 +268,7 @@ npm run e2e                 # tests in a real browser
 ## Feature switches
 
 Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has two entries: **Chat** and **Thesis direction**.
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page** and **Game**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden** and **PhD Expedition map**.
 
 ## Later (your list)
 

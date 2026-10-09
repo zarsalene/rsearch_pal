@@ -85,6 +85,11 @@ export const api = {
   addReward: (reward) => request("/api/rewards", { method: "POST", json: reward }),
   claimReward: (id) => request(`/api/rewards/${id}/claim`, { method: "POST" }),
   deleteReward: (id) => request(`/api/rewards/${id}`, { method: "DELETE" }),
+  // Knowledge Garden (spaced review) and the Expedition map. The server picks the day of each item (FSRS).
+  reviewDue: (date, tz, paperId) => request(`/api/review/due?date=${date}&tz=${tz}${paperId ? "&paper_id=" + paperId : ""}`),
+  reviewGarden: (date, tz) => request(`/api/review/garden?date=${date}&tz=${tz}`),
+  rateReview: (id, rating, date) => request(`/api/review/${id}`, { method: "POST", json: { rating, date } }),
+  journeyMap: () => request("/api/journey/map"),
   // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
   features: () => request("/api/features"),
   setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),

@@ -135,20 +135,22 @@ function Wins({ data, date, onChanged, notify, inputRef }) {
 }
 
 // The home page. One main action is clear. The other blocks are calm and small.
-export default function Today({ papers, onAction, gameOn = false, notify }) {
+export default function Today({ papers, onAction, gameOn = false, reviewOn = false, onOpenReview, notify }) {
   const [date] = useState(localDate);
   const [data, setData] = useState(null);
   const [game, setGame] = useState(null);
+  const [garden, setGarden] = useState(null);
   const winRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
       setData(await api.today(date));
       if (gameOn) setGame(await api.game(date, tzMinutes()).catch(() => null));
+      if (reviewOn) setGarden(await api.reviewGarden(date, tzMinutes()).catch(() => null));
     } catch (e) {
       notify(e.message);
     }
-  }, [date, notify, gameOn]);
+  }, [date, notify, gameOn, reviewOn]);
   useEffect(() => {
     load();
   }, [load, papers.length]);
@@ -229,12 +231,26 @@ export default function Today({ papers, onAction, gameOn = false, notify }) {
             </div>
           ))
         )}
-        {["Quest", "Review"].map((n) => (
-          <div key={n} className="soon">
-            <strong>{n}</strong>
+        <div className="soon">
+          <strong>Quest</strong>
+          <span className="small muted">Coming soon</span>
+        </div>
+        {garden ? (
+          <div className="soon live" aria-label="Review">
+            <strong>Review</strong>
+            <span>
+              {garden.due_total} {garden.due_total === 1 ? "item" : "items"} due
+            </span>
+            <button className="link" onClick={onOpenReview}>
+              {garden.due_total > 0 ? "Water your plants" : "Open the garden"}
+            </button>
+          </div>
+        ) : (
+          <div className="soon">
+            <strong>Review</strong>
             <span className="small muted">Coming soon</span>
           </div>
-        ))}
+        )}
       </div>
     </section>
   );
