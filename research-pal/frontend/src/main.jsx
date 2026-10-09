@@ -8,5 +8,6 @@ import "./today.css";
 import "./game.css";
 import "./review.css";
 import "./quests.css";
+import "./write.css";
 
 createRoot(document.getElementById("root")).render(<App />);
