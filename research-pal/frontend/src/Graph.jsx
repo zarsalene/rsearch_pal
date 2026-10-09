@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "./api.js";
+import SimpleText from "./SimpleText.jsx";
 
 const RELATION = {
   same_problem: "Same problem",
@@ -39,7 +40,7 @@ function Explain({ state, onAgain, notify }) {
         {d.status !== "verified" && <span className="badge b-bad">No quote was found in the PDFs. Do not trust this text.</span>}
       </div>
       <h4>What links them</h4>
-      <p className="answer">{d.summary}</p>
+      <SimpleText text={d.summary} load={() => api.simplifyText(d.summary)} />
       {d.shared.length > 0 && (
         <>
           <h4>What they share</h4>
@@ -49,7 +50,7 @@ function Explain({ state, onAgain, notify }) {
       {d.differences && (
         <>
           <h4>How they differ</h4>
-          <p className="answer">{d.differences}</p>
+          <SimpleText text={d.differences} load={() => api.simplifyText(d.differences)} />
         </>
       )}
       {d.evidence.length > 0 && (

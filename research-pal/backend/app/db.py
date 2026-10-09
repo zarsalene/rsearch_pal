@@ -36,6 +36,10 @@ def init() -> None:
               data TEXT, created_at REAL, updated_at REAL);
             CREATE TABLE IF NOT EXISTS features(
               name TEXT PRIMARY KEY, enabled INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS glossary(
+              id TEXT PRIMARY KEY, term TEXT, explanation TEXT, source TEXT, paper_id TEXT, page INTEGER DEFAULT 0, created_at REAL);
+            CREATE TABLE IF NOT EXISTS ai_log(
+              id INTEGER PRIMARY KEY AUTOINCREMENT, time REAL, feature TEXT, paper_id TEXT, provider TEXT, model TEXT);
             """
         )
         c.execute("UPDATE extra_cards SET status='error', error='Processing stopped (server restart). Click Retry.' WHERE status IN ('processing','queued')")
@@ -166,7 +170,6 @@ def delete_extra(pid: str, cid: str) -> None:
     with conn() as c:
         c.execute("DELETE FROM extra_cards WHERE id=? AND paper_id=?", (cid, pid))
 
-
 # ---------- saved AI answers ----------
 CACHE_MAX = 1000  # the oldest answers go first
 
@@ -205,6 +208,58 @@ def cache_clear() -> None:
     _ensure_cache_table()
     with conn() as c:
         c.execute("DELETE FROM llm_cache")
+
+
+# ---------- glossary: the words that the student looked up ----------
+def glossary_add(term: str, explanation: str, source: str, paper_id: str, page: int = 0, gid: str | None = None, created_at: float | None = None) -> dict:
+    """One row for each term and paper. The same term again gives the saved row. source: "paper" or "ai"."""
+    with conn() as c:
+        r = c.execute("SELECT * FROM glossary WHERE lower(term)=lower(?) AND paper_id=?", (term, paper_id)).fetchone()
+        if r:
+            return dict(r)
+        gid = gid or new_id()
+        c.execute("INSERT INTO glossary(id,term,explanation,source,paper_id,page,created_at) VALUES(?,?,?,?,?,?,?)",
+                  (gid, term, explanation, source, paper_id, int(page or 0), created_at or time.time()))
+        return dict(c.execute("SELECT * FROM glossary WHERE id=?", (gid,)).fetchone())
+
+
+def glossary_find(term: str, paper_id: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM glossary WHERE lower(term)=lower(?) AND paper_id=?", (term, paper_id)).fetchone()
+    return dict(r) if r else None
+
+
+def glossary_list(q: str = "") -> list[dict]:
+    like = f"%{q.strip().lower()}%"
+    with conn() as c:
+        rows = c.execute(
+            "SELECT g.*, p.title AS paper_title FROM glossary g LEFT JOIN papers p ON p.id=g.paper_id "
+            "WHERE ?='%%' OR lower(g.term) LIKE ? OR lower(g.explanation) LIKE ? ORDER BY lower(g.term)", (like, like, like)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def glossary_delete(gid: str) -> bool:
+    with conn() as c:
+        return c.execute("DELETE FROM glossary WHERE id=?", (gid,)).rowcount > 0
+
+
+# ---------- AI use log: one row for each AI answer that did not come from the saved answers ----------
+def ai_log_add(feature: str, paper_id: str, provider: str, model: str, when: float | None = None) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO ai_log(time,feature,paper_id,provider,model) VALUES(?,?,?,?,?)", (when or time.time(), feature, paper_id, provider, model))
+
+
+def ai_log_list(limit: int = 100) -> dict:
+    with conn() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM ai_log ORDER BY id DESC LIMIT ?", (limit,))]
+        by = {r["feature"]: r["n"] for r in c.execute("SELECT feature, COUNT(*) AS n FROM ai_log GROUP BY feature ORDER BY n DESC")}
+    return {"total": sum(by.values()), "by_feature": by, "rows": rows}
+
+
+def ai_log_has(row: dict) -> bool:
+    with conn() as c:
+        return c.execute("SELECT 1 FROM ai_log WHERE time=? AND feature=? AND paper_id=? AND provider=? AND model=?",
+                         (row["time"], row["feature"], row["paper_id"], row["provider"], row["model"])).fetchone() is not None
 
 
 # ---------- feature switches ----------

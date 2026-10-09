@@ -53,6 +53,15 @@ export const api = {
   // fresh: true asks the AI again. Without it, the same request gets its saved answer.
   regenerate: (id, { purpose, focus, fresh } = {}) => request(`/api/papers/${id}/regenerate`, { method: "POST", json: { purpose, focus, fresh: !!fresh } }),
   clearCache: () => request("/api/cache", { method: "DELETE" }),
+  // Simple mode: the simple version of a text of the card (the server reads the text itself) or of any text of the AI.
+  simplifyField: (id, field, cardId = "") => request(`/api/papers/${id}/simplify`, { method: "POST", json: { field, card_id: cardId || "" } }),
+  simplifyText: (text) => request("/api/simplify", { method: "POST", json: { text } }),
+  // Word helper and glossary. The server makes the explanation. The page sends only the word and the paper.
+  define: (id, term) => request(`/api/papers/${id}/define`, { method: "POST", json: { term } }),
+  glossary: () => request("/api/glossary"),
+  addGlossary: (term, paper_id) => request("/api/glossary", { method: "POST", json: { term, paper_id } }),
+  deleteGlossary: (id) => request(`/api/glossary/${id}`, { method: "DELETE" }),
+  aiLog: (limit = 1) => request(`/api/ai-log?limit=${limit}`),
   // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
   features: () => request("/api/features"),
   setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),

@@ -40,6 +40,34 @@ Write a topic (example: "the validation agent") when you add a paper, or on the 
 Open a paper, then click **New card** in the tabs above the card. Write a focus topic (example: "the dataset"). The server makes a second card from the text it already saved. There is no new upload.
 Each card has its own focus, quotes, edits and mind map. A paper can have 13 cards at most. Search, links and the chat still use the first card of each paper.
 
+## Simple mode
+
+The switch **Expert / Simple** is in the top bar. The browser remembers your choice.
+
+- In Simple mode, each text that the AI wrote shows a simple version: the card fields, the verdict, the chat answers, the link explanations and the mind map.
+- The simple version has sentences of 12 words at most. It explains each hard term in a short sentence and keeps the term in brackets.
+- The server checks the simple version. If a **number** or a **name** is different, the server **keeps the original text** and tells you why.
+- A label **AI simplification** shows on each simple text. The AI can add a short explanation of a term. This explanation is not from the paper. The quotes and the page numbers do not change.
+- Click **Show the original** to read the first text again.
+- The AI never rewrites a text that you wrote or edited.
+
+## Word helper and glossary
+
+Select a word or a short term in a card or in the chat. A small box opens.
+
+- **From the paper:** the server found a sentence in the PDF that defines the word. You see this sentence and its page. The AI did not write it.
+- **AI explanation:** the paper has no definition. The AI explains the word. This text is not from the paper.
+- Click **Save to glossary** to keep the word. The **Glossary** tab lists your words. You can search and delete them. The backup file holds your glossary.
+- The server makes the text again when you save a word. The page cannot send its own text.
+
+## AI use log
+
+The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.
+
+- A saved answer writes no line, because the AI did not help again.
+- The log has no text of your papers. The backup file holds the log.
+- You cannot switch the log off.
+
 ## Mind map, missing fields, AI models
 
 - **Mind map:** it is built from the cards, with no AI call. One card: its claims. Several cards: one branch for each card. It follows the cards each time you open the card. Press "Build the mind map" to show it.
@@ -116,6 +144,7 @@ In Render, set `FRONTEND_ORIGIN` = your Vercel address (no slash at the end). Re
 
 - Search and links run on your server only. The embeddings never leave it.
 - To make a card, **selected passages of the paper (not the full PDF file) go to the AI provider** (Groq or OpenRouter). Read their data policy before you use unpublished or confidential papers.
+- Simple mode sends one text of a card (or a chat answer) to the AI provider. The word helper sends the word and up to 3 sentences of the paper, only when the paper has no definition.
 - Public hosting (Render, Vercel) also means your data is on their servers.
 - For truly private reading: run the backend on your own computer with Ollama
   (`LLM_PROVIDER=ollama`, `ollama pull llama3.1:8b`). No text leaves your computer.
@@ -141,7 +170,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has one entry: **Chat**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode** and **Word helper and glossary**.
 
 ## Later (your list)
 

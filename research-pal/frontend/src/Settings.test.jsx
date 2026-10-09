@@ -1,12 +1,14 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./api.js", () => ({ api: { setFeatures: vi.fn() } }));
+vi.mock("./api.js", () => ({ api: { setFeatures: vi.fn(), aiLog: vi.fn() } }));
 import { api } from "./api.js";
 import Settings from "./Settings.jsx";
 
 const FEATURES = [{ name: "chat", label: "Chat", description: "Ask questions about your papers.", enabled: true }];
+
+beforeEach(() => api.aiLog.mockResolvedValue({ total: 0, by_feature: {}, rows: [] }));
 
 function setup(props = {}) {
   const onFeatures = vi.fn();
@@ -40,5 +42,11 @@ describe("Settings: feature switches", () => {
   it("shows no Features section while the list is not loaded", () => {
     setup({ features: null });
     expect(screen.queryByText("Features")).not.toBeInTheDocument();
+  });
+
+  it("shows how many times the AI helped, for each feature", async () => {
+    api.aiLog.mockResolvedValue({ total: 3, by_feature: { card: 2, chat: 1 }, rows: [] });
+    setup();
+    expect(await screen.findByText("The AI helped 3 times: card 2, chat 1.")).toBeInTheDocument();
   });
 });
