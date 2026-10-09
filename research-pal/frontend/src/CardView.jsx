@@ -3,6 +3,7 @@ import { api, cardApi } from "./api.js";
 import { Icon } from "./icons.jsx";
 import MindMap from "./MindMap.jsx";
 import SimpleText from "./SimpleText.jsx";
+import Understand from "./Understand.jsx";
 
 const ORDER = [
   ["question", "My question"],
@@ -333,7 +334,9 @@ function CardTabs({ list, active, onPick, onAdd, canAdd }) {
   );
 }
 
-export default function CardView({ id, onChanged, onDeleted, notify }) {
+export default function CardView({ id, onChanged, onDeleted, notify, parts = { feynman: true, eli12: true, quiz: true } }) {
+  const [view, setView] = useState("card"); // "card" or "understand"
+  const understandOn = parts.feynman || parts.eli12 || parts.quiz;
   const [data, setData] = useState(null);
   const [purpose, setPurpose] = useState("");
   const [mapBusy, setMapBusy] = useState(false);
@@ -488,6 +491,18 @@ export default function CardView({ id, onChanged, onDeleted, notify }) {
 
       {card && <Summary card={card} paperId={id} cardId={cid} />}
 
+      {card && understandOn && (
+        <div className="viewseg" role="tablist" aria-label="View of the card">
+          <button role="tab" aria-selected={view === "card"} onClick={() => setView("card")}>
+            <Icon name="doc" size={14} /> Card
+          </button>
+          <button role="tab" aria-selected={view === "understand"} onClick={() => setView("understand")}>
+            <Icon name="sparkle" size={14} /> Understand
+          </button>
+        </div>
+      )}
+      {card && understandOn && view === "understand" && <Understand paperId={id} cardId={cid} card={card} parts={parts} notify={notify} />}
+
       {card && (() => {
         const missing = CLAIMS.filter(([k]) => card.fields?.[k]?.status === "not_found");
         if (!missing.length && !fillMsg) return null;
@@ -510,7 +525,7 @@ export default function CardView({ id, onChanged, onDeleted, notify }) {
 
       <FocusBar current={paper.focus || ""} keywords={card?.keywords} busy={inProgress} onApply={(focus) => again({ focus })} />
 
-      {card && (
+      {card && (view === "card" || !understandOn) && (
         <>
           {card.focus && card.fields?.focus && (
             <section className="focus-card" aria-label="Focus">

@@ -76,6 +76,43 @@ def check_simple_and_words(client, h, pid, card, name) -> list[str]:
     return problems
 
 
+def check_understand(client, h, pid, card, name) -> list[str]:
+    """Feynman check, like I am 12 and the quiz on a real paper. The explanation is made from the card, with one false number."""
+    problems = []
+    f = card["fields"]
+    ok_text = " ".join(f[k]["answer"] for k in ("problem", "method") if f.get(k, {}).get("status") in ("verified", "check"))
+    false_claim = "The model reaches 99.99 percent accuracy."
+    r = client.post(f"/api/papers/{pid}/explain", headers=h, json={"text": (ok_text + " " + false_claim)[:2900]})
+    if r.status_code != 200:
+        print(f"  explain: error {r.status_code} {r.text[:150]}")
+        return problems
+    res = r.json()
+    print(f"  explain: score {res['score']}/100. {res['message']}")
+    for c in res["claims"]:
+        print(f"      [{c['mark']:<12}] {c['text'][:90]}" + (f"  (p.{c['page']})" if c["page"] else ""))
+    last = res["claims"][-1]
+    if last["mark"] != "wrong":
+        problems.append(f"{name}: THE FALSE NUMBER 99.99 WAS NOT MARKED WRONG ({last['mark']})")
+    for c in res["claims"]:
+        if c["verified"]:
+            try:
+                assert_no_false_quote({"quote": c["quote"], "verified": True}, pages=db.get_pages(pid))
+            except AssertionError as e:
+                problems.append(f"{name}: WRONG QUOTE IN THE FEYNMAN CHECK. {str(e)[:150]}")
+    e = client.post(f"/api/papers/{pid}/eli12", headers=h, json={"field": "method"})
+    if e.status_code == 200:
+        d = e.json()
+        print(f"  like I am 12: simple={'OK' if d['simple']['ok'] else 'refused'} | example: {(d['example'] or {}).get('text', '-')[:90]} | analogy: {(d['analogy'] or {}).get('text', '-')[:90]}")
+    q = client.post(f"/api/papers/{pid}/quiz", headers=h, json={})
+    if q.status_code == 200:
+        qs = q.json()["questions"]
+        print(f"  quiz: {len(qs)} questions (the AI made up to 5; a question without a verified quote is dropped)")
+        for item in db.review_list(pid, "quiz"):
+            print(f"      Q: {item['question'][:100]}")
+            print(f"         A: {item['answer'][:100]}  (p.{item['page']})")
+    return problems
+
+
 def main_run() -> int:
     pdfs = [Path(p) for p in args.pdfs]
     if not pdfs or not all(p.is_file() for p in pdfs):
@@ -115,6 +152,7 @@ def main_run() -> int:
                 problems.append(f"{path.name}: WRONG QUOTE SHOWN AS VERIFIED. {str(e)[:200]}")
                 print("  ", problems[-1])
             problems += check_simple_and_words(client, h, pid, got["card"], path.name)
+            problems += check_understand(client, h, pid, got["card"], path.name)
     print("\n" + "=" * 60)
     if problems:
         print("RESULT: FAILED")

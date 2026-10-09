@@ -84,6 +84,50 @@ test.describe.serial("Research Pal", () => {
     await expect(page.getByText("No word yet.")).toBeVisible();
   });
 
+  test("Understand: explain the paper, see the colors, read it like I am 12, do the quiz", async ({ page }) => {
+    await signIn(page);
+    await page.getByRole("tab", { name: "Understand" }).click();
+
+    // A1: the Feynman check. The fake AI marks 2 claims correct. The server marks the number 95.0 wrong (it is not in the PDF).
+    await page.getByLabel("Your explanation").fill("The system uses a hypothesis agent. It reaches a precision of 91.4 percent. The recall is 95.0 percent. It also cooks pasta.");
+    await page.getByRole("button", { name: "Check my explanation" }).click();
+    await expect(page.getByLabel("Score 67 of 100")).toBeVisible();
+    await expect(page.locator(".claim.mark-correct:not(.legend)")).toHaveCount(2);
+    await expect(page.locator(".claim.mark-wrong:not(.legend)")).toHaveCount(1);
+    await expect(page.locator(".claim.mark-not_in_paper:not(.legend)")).toHaveCount(1);
+    await expect(page.getByText(/Good start. 1 point is missing/)).toBeVisible();
+    await page.getByRole("button", { name: /The recall is 95.0 percent/ }).click();
+    await expect(page.getByRole("region", { name: "Proof for the selected claim" })).toContainText("The number 95.0 is not in the paper.");
+    await page.getByRole("button", { name: /The system uses a hypothesis agent/ }).click();
+    await expect(page.getByRole("region", { name: "Proof for the selected claim" }).getByRole("button", { name: "p. 2" })).toBeVisible();
+    await expect(page.getByText("Points that you did not mention")).toBeVisible();
+    await expect(page.getByText("Progress: 67")).toBeVisible(); // the history shows the attempt
+
+    // A2: like I am 12. The example and the analogy have the label "AI suggestion".
+    await page.getByRole("tab", { name: "Like I am 12" }).click();
+    await page.getByRole("button", { name: "Explain it like I am 12" }).click();
+    await expect(page.locator(".eli-result .answer").first()).toContainText("Simple: ");
+    await expect(page.locator(".eli-result").getByText("AI suggestion")).toHaveCount(2);
+    await expect(page.getByText("The paper calls this: hypothesis agent.")).toBeVisible();
+
+    // A5: the quiz. One question at a time. A wrong answer shows the correct quote and page.
+    await page.getByRole("tab", { name: "Quiz me" }).click();
+    await page.getByRole("button", { name: "Make new questions" }).click();
+    await expect(page.getByText("Question 1 of 2")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What does the hypothesis agent read?" })).toBeVisible();
+    await page.getByLabel("Your answer").fill("It reads the Sysmon logs.");
+    await page.getByRole("button", { name: "Check my answer" }).click();
+    await expect(page.locator(".quizres .badge")).toHaveText("Correct");
+    await page.getByRole("button", { name: "Next question" }).click();
+    await page.getByLabel("Your answer").fill("I do not remember.");
+    await page.getByRole("button", { name: "Check my answer" }).click();
+    await expect(page.locator(".quizres .badge")).toHaveText("Wrong");
+    await expect(page.locator(".quizres")).toContainText("The OpTC dataset.");
+    await expect(page.locator(".quizres").getByRole("button", { name: "p. 3" })).toBeVisible();
+    await page.getByRole("button", { name: "See the result" }).click();
+    await expect(page.getByText("1 of 2 answers were correct.")).toBeVisible();
+  });
+
   test("a feature switch hides the Chat tab and brings it back", async ({ page }) => {
     await signIn(page);
     await expect(page.getByRole("tab", { name: "Chat" })).toBeVisible();
