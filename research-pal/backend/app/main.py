@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, files, links, llm, mindmap, pdf, ste, tts, vectors, words
+from . import auth, cards, chat, config, db, features, files, game, links, llm, mindmap, pdf, ste, tts, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -700,6 +700,70 @@ def delete_glossary(gid: str):
     return {"ok": True}
 
 
+# ---------- game: boss battles, card collection, map ----------
+# No endpoint takes points from the page. XP comes from work that the server checks (see game.py).
+def play(fn, *args):
+    try:
+        return fn(*args)
+    except game.GameError as e:
+        raise HTTPException(e.status, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+GAME = [Depends(auth.require_auth), Depends(features.require("game"))]
+
+
+@app.get("/api/game", dependencies=GAME)
+def get_game(tz: int = 0):
+    """The level, the XP, the streak and the rank of each paper. It also gives the XP that the real work has earned and was not paid yet
+    (a new card, a saved word, an explained link). The answer lists it in "new", so the page can celebrate."""
+    return game.profile(min(max(tz, -840), 840))
+
+
+class GameSettingsIn(BaseModel):
+    weekend_off: bool
+
+
+@app.put("/api/game/settings", dependencies=GAME)
+def put_game_settings(body: GameSettingsIn):
+    game.set_weekend_off(body.weekend_off)
+    return {"weekend_off": body.weekend_off}
+
+
+@app.get("/api/game/collection", dependencies=GAME)
+def get_collection():
+    return game.collection()
+
+
+@app.get("/api/game/map", dependencies=GAME)
+def get_game_map():
+    return game.world_map()
+
+
+@app.post("/api/papers/{pid}/battle", dependencies=GAME)
+def start_battle(pid: str):
+    """Start the boss battle of a paper, or go on with the open one. The AI writes questions from the checked quotes of the card."""
+    must_get(pid)
+    return play(game.start_battle, pid)
+
+
+@app.get("/api/battles/{bid}", dependencies=GAME)
+def get_battle(bid: str):
+    return play(game.get_battle, bid)
+
+
+class AnswerIn(BaseModel):
+    n: int
+    choice: int
+
+
+@app.post("/api/battles/{bid}/answer", dependencies=GAME)
+def answer_battle(bid: str, body: AnswerIn):
+    """The page sends the number of the question and the answer that the student chose. The server decides if it is right."""
+    return play(game.answer, bid, body.n, body.choice)
+
+
 # ---------- AI use log ----------
 @app.get("/api/ai-log", dependencies=[Depends(auth.require_auth)])
 def ai_log(limit: int = 100):
@@ -778,7 +842,7 @@ def export():
         d["extra_cards"] = [{"id": x["id"], "focus": x["focus"], "purpose": x["purpose"], "card": x["card"]} for x in db.list_extra(p["id"]) if x["card"]]
         papers.append(d)
     glossary = [{k: g[k] for k in ("id", "term", "explanation", "source", "paper_id", "page", "created_at")} for g in db.glossary_list()]
-    return {"version": 1, "thesis_question": db.get_setting("thesis_question"), "papers": papers, "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"]}
+    return {"version": 1, "thesis_question": db.get_setting("thesis_question"), "papers": papers, "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"], "game": game.export_data()}
 
 
 @app.post("/api/import", dependencies=[Depends(auth.require_auth)])
@@ -819,4 +883,5 @@ def import_backup(data: dict, background: BackgroundTasks):
                 db.ai_log_add(row["feature"], row["paper_id"], row["provider"], row["model"], row["time"])
         except (KeyError, TypeError, ValueError):
             pass
+    game.import_data(data.get("game"))  # the battles. The XP for cards, words and links comes back by itself.
     return {"added": added}

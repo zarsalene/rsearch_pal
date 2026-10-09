@@ -10,6 +10,7 @@ REGISTRY: dict[str, dict] = {
     "simple": {"label": "Simple mode", "description": "A switch in the top bar. In Simple mode, the AI texts have shorter sentences and explain the hard terms.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
     "tts": {"label": "Listen (voice)", "description": "A Listen button reads the AI texts aloud. The server makes the voice with a small model, no AI provider.", "default": True},
+    "game": {"label": "Play (boss fights, cards, map, Duck)", "description": "Turn your reading into a game. Fight the boss of a paper, collect cards, find links in the fog, and grow your Duck. Points come only from real work that the server checks.", "default": True},
 }
 
 
