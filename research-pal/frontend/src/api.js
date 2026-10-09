@@ -53,6 +53,9 @@ export const api = {
   // fresh: true asks the AI again. Without it, the same request gets its saved answer.
   regenerate: (id, { purpose, focus, fresh } = {}) => request(`/api/papers/${id}/regenerate`, { method: "POST", json: { purpose, focus, fresh: !!fresh } }),
   clearCache: () => request("/api/cache", { method: "DELETE" }),
+  // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
+  features: () => request("/api/features"),
+  setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),
   patchCard: (id, fields, verdict) => request(`/api/papers/${id}/card`, { method: "PATCH", json: { fields, verdict } }),
   remove: (id) => request(`/api/papers/${id}`, { method: "DELETE" }),
   makeMindmap: (id) => request(`/api/papers/${id}/mindmap`, { method: "POST" }),

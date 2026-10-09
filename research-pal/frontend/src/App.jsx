@@ -24,6 +24,7 @@ export default function App() {
   const [papers, setPapers] = useState([]);
   const [selected, setSelected] = useState(null);
   const [config, setConfig] = useState(null);
+  const [features, setFeatures] = useState(null);
   const [notice, setNotice] = useState("");
   // The library can open and close. The choice is saved in this browser.
   const [libOpen, setLibOpen] = useState(() => {
@@ -59,6 +60,7 @@ export default function App() {
     if (!authed) return;
     refresh();
     api.config().then(setConfig).catch(() => {});
+    api.features().then(setFeatures).catch(() => {});
   }, [authed, refresh]);
 
   // Poll while a paper is in progress
@@ -82,6 +84,11 @@ export default function App() {
     if (window.matchMedia("(max-width: 820px)").matches) setLibOpen(false);
   };
 
+  // A feature that is switched off in Settings has no tab. While the list loads, all features show.
+  const on = (name) => features?.find((f) => f.name === name)?.enabled !== false;
+  const shownTabs = TABS.filter(([k]) => k !== "chat" || on("chat"));
+  const page = tab === "chat" && !on("chat") ? "cards" : tab;
+
   if (!authed) {
     return (
       <Login
@@ -103,7 +110,7 @@ export default function App() {
           Research Pal
         </div>
         <nav className="tabs" role="tablist" aria-label="Sections">
-          {TABS.map(([k, label, icon]) => (
+          {shownTabs.map(([k, label, icon]) => (
             <button key={k} role="tab" aria-selected={tab === k} aria-label={label} onClick={() => { setTab(k); setNotice(""); }}>
               <Icon name={icon} size={16} />
               <span className="tl">{label}</span>
@@ -134,7 +141,7 @@ export default function App() {
           notify={setNotice}
         />
         <main className="main">
-          {tab === "cards" &&
+          {page === "cards" &&
             (selected ? (
               <CardView
                 key={selected}
@@ -177,14 +184,18 @@ export default function App() {
               </div>
             ))}
           {/* The chat stays mounted, so the conversation is not lost when you open a card */}
-          <div hidden={tab !== "chat"}>
-            <Chat papers={papers} selectedId={selected} onOpenCard={openPaper} notify={setNotice} />
-          </div>
+          {on("chat") && (
+            <div hidden={page !== "chat"}>
+              <Chat papers={papers} selectedId={selected} onOpenCard={openPaper} notify={setNotice} />
+            </div>
+          )}
           {tab === "search" && <Search onOpenCard={openPaper} notify={setNotice} />}
           {tab === "links" && <Graph onOpenCard={openPaper} notify={setNotice} />}
           {tab === "settings" && (
             <Settings
               config={config}
+              features={features}
+              onFeatures={setFeatures}
               onConfig={setConfig}
               onImported={refresh}
               onLogout={() => {
