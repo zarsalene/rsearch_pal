@@ -17,7 +17,7 @@ if config.USE_PG:
     import psycopg2, psycopg2.extras, psycopg2.pool
     INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg2.IntegrityError)
 
-TABLES = ("papers", "pages", "cards", "extra_cards", "features", "glossary", "ai_log", "llm_cache", "settings")
+TABLES = ("papers", "pages", "cards", "extra_cards", "features", "glossary", "ai_log", "llm_cache", "settings", "xp_events", "battles")
 
 SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS papers(
@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS llm_cache(
   key TEXT PRIMARY KEY, tag TEXT, provider TEXT, model TEXT, response TEXT, created_at REAL, user_id TEXT NOT NULL DEFAULT 'local');
 CREATE TABLE IF NOT EXISTS settings(
   key TEXT PRIMARY KEY, value TEXT, user_id TEXT NOT NULL DEFAULT 'local');
+CREATE TABLE IF NOT EXISTS xp_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, ref_id TEXT, xp INTEGER, time REAL, user_id TEXT NOT NULL DEFAULT 'local', UNIQUE(user_id, action, ref_id));
+CREATE TABLE IF NOT EXISTS battles(
+  id TEXT PRIMARY KEY, paper_id TEXT, status TEXT, data TEXT, created_at REAL, updated_at REAL, user_id TEXT NOT NULL DEFAULT 'local');
 """
 
 
@@ -216,7 +220,7 @@ def get_card(pid: str):
 def delete_paper(pid: str) -> None:
     u = _uid()
     with conn() as c:
-        for t in ("pages", "cards"):
+        for t in ("pages", "cards", "battles"):  # the XP of the student stays: it is a list of work that was done
             c.execute(f"DELETE FROM {t} WHERE paper_id=? AND user_id=?", (pid, u))
         c.execute("DELETE FROM papers WHERE id=? AND user_id=?", (pid, u))
         c.execute("DELETE FROM settings WHERE key LIKE ? AND user_id=?", (f"link:%{pid}%", u))  # saved link explanations of this paper
@@ -371,7 +375,65 @@ def set_feature(name: str, enabled: bool) -> None:
         c.execute(f"INSERT INTO features(name,user_id,enabled) VALUES(?,?,?) ON CONFLICT{_on('name')} DO UPDATE SET enabled=excluded.enabled", (name, _uid(), bool(enabled)))
 
 
+# ---------- game: the list of XP and the boss battles ----------
+def xp_add(action: str, ref_id: str, xp: int, when: float | None = None) -> bool:
+    """One row for each (action, ref_id). The same pair again gives False and adds no XP: a piece of work gives points one time only."""
+    with conn() as c:
+        cur = c.execute("INSERT INTO xp_events(user_id,action,ref_id,xp,time) VALUES(?,?,?,?,?) ON CONFLICT DO NOTHING",
+                        (_uid(), action, ref_id, int(xp), when or time.time()))
+        return cur.rowcount > 0
+
+
+def xp_list() -> list[dict]:
+    with conn() as c:
+        rows = c.execute("SELECT action, ref_id, xp, time FROM xp_events WHERE user_id=? ORDER BY time, id", (_uid(),)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _battle_row(r) -> dict:
+    d = dict(r)
+    d["data"] = _j(d["data"]) or {}
+    d.pop("user_id", None)
+    return d
+
+
+def battle_add(bid: str, pid: str, data: dict, status: str = "active", when: float | None = None) -> None:
+    now = when or time.time()
+    with conn() as c:
+        c.execute("INSERT INTO battles(id,user_id,paper_id,status,data,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
+                  (bid, _uid(), pid, status, json.dumps(data, ensure_ascii=False), now, now))
+
+
+def battle_get(bid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM battles WHERE id=? AND user_id=?", (bid, _uid())).fetchone()
+    return _battle_row(r) if r else None
+
+
+def battle_update(bid: str, status: str, data: dict) -> None:
+    with conn() as c:
+        c.execute("UPDATE battles SET status=?, data=?, updated_at=? WHERE id=? AND user_id=?", (status, json.dumps(data, ensure_ascii=False), time.time(), bid, _uid()))
+
+
+def battle_list(pid: str | None = None, status: str | None = None) -> list[dict]:
+    sql, args = "SELECT * FROM battles WHERE user_id=?", [_uid()]
+    if pid:
+        sql, args = sql + " AND paper_id=?", args + [pid]
+    if status:
+        sql, args = sql + " AND status=?", args + [status]
+    with conn() as c:
+        rows = c.execute(sql + " ORDER BY created_at", args).fetchall()
+    return [_battle_row(r) for r in rows]
+
+
 # ---------- settings ----------
+def settings_with_prefix(prefix: str) -> list[tuple[str, str]]:
+    """The saved values whose key starts with prefix (the saved link explanations, for example)."""
+    with conn() as c:
+        rows = c.execute("SELECT key, value FROM settings WHERE key LIKE ? AND user_id=?", (prefix.replace("%", "") + "%", _uid())).fetchall()
+    return [(r["key"], r["value"]) for r in rows]
+
+
 def get_setting(key: str, default: str = "") -> str:
     with conn() as c:
         r = c.execute("SELECT value FROM settings WHERE key=? AND user_id=?", (key, _uid())).fetchone()

@@ -78,6 +78,25 @@ create table if not exists llm_cache (
   primary key (user_id, key)
 );
 
+-- ---------- game: the list of XP (one row for each piece of work) and the boss battles ----------
+create table if not exists xp_events (
+  id       bigint generated always as identity primary key,
+  user_id  uuid not null references auth.users(id) on delete cascade,
+  action   text not null, ref_id text not null,
+  xp       integer not null,
+  time     double precision,
+  unique (user_id, action, ref_id)
+);
+
+create table if not exists battles (
+  id         text primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  paper_id   text references papers(id) on delete cascade,
+  status     text,
+  data       jsonb,
+  created_at double precision, updated_at double precision
+);
+
 -- ---------- vectors (768 values = Gemini embedding, GEMINI_EMBED_DIM) ----------
 create table if not exists chunks (
   id        text primary key,                      -- "<paper_id>:<chunk id>"
@@ -113,12 +132,13 @@ create index if not exists papers_user_idx on papers(user_id, created_at desc);
 create index if not exists extra_cards_paper_idx on extra_cards(user_id, paper_id);
 create index if not exists glossary_user_idx on glossary(user_id);
 create index if not exists ai_log_user_idx on ai_log(user_id, time desc);
+create index if not exists battles_paper_idx on battles(user_id, paper_id);
 
 -- ---------- security: RLS on, and a user can only see his own rows ----------
 do $$
 declare t text;
 begin
-  foreach t in array array['papers','pages','cards','extra_cards','glossary','ai_log','features','settings','llm_cache','chunks','card_vectors']
+  foreach t in array array['papers','pages','cards','extra_cards','glossary','ai_log','features','settings','llm_cache','xp_events','battles','chunks','card_vectors']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists own_rows on %I', t);
