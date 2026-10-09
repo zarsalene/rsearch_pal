@@ -244,7 +244,7 @@ In Render, set `FRONTEND_ORIGIN` = your Vercel address (no slash at the end). To
 | Limit | What happens | What to do |
 |---|---|---|
 | Render free disk is temporary | Papers and cards disappear when the server restarts or you deploy again | Download a backup in **Settings** every week. Restore it after a reset. A paid Render disk removes the problem. |
-| Render free server sleeps after 15 min | The first request needs up to one minute | Wait. The login page tells you. |
+| Render free server sleeps after 15 min | The first request needs up to one minute | The GitHub job [keep-alive.yml](../.github/workflows/keep-alive.yml) calls the server every 10 minutes, so it stays awake. For a second safety, add a free monitor (UptimeRobot, 5 minutes) on `/api/health`. A free Render account has 750 server hours each month. One server that is always awake uses about 744, so do not run a second free service. |
 | Render free server has 512 MB of memory | The local embedding model needs most of it. If the server stops during an upload, memory is the reason | Set `EMBEDDING_BACKEND=gemini` (see step 3). Upload one paper at a time. Or use a paid plan, or another host with more memory. |
 | Groq free plan has rate limits | You see "free limit is reached" | Wait one minute and click Retry. Lower `LLM_CONTEXT_CHARS` if it continues. |
 | Large papers | The limits are 25 MB (`MAX_UPLOAD_MB`), 80 pages (`MAX_PAGES`) and 90,000 characters for one card (`LLM_CONTEXT_CHARS`). A larger paper is read in part. | Write a **Focus topic** when you add the paper, or cut the PDF before you upload it. |
