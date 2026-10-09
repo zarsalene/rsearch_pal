@@ -1,0 +1,33 @@
+/* ---- Simple mode, word helper, glossary (Sprint 01) ---- */
+.levelseg{display:inline-flex;gap:2px;padding:3px;background:var(--fill);border-radius:var(--tab-r);margin-right:8px}
+.levelseg button{border:0;background:none;border-radius:var(--tab-r-in);padding:4px 12px;font-size:.82rem;font-weight:600;color:var(--muted);cursor:pointer;transition:background .25s var(--ease),color .2s,box-shadow .25s}
+.levelseg button:hover{color:var(--ink)}
+.levelseg button[aria-checked=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(24,24,27,.10),0 0 0 1px rgba(24,24,27,.05)}
+.simplebar{display:flex;align-items:center;gap:10px;margin:2px 0 6px}
+.wordbox{position:fixed;z-index:60;width:360px;max-width:calc(100vw - 24px);background:var(--surface);border:var(--edge);border-radius:var(--r-md);box-shadow:var(--shadow-lg);padding:14px 16px}
+.wordbox-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.wordbox-head .iconbtn{margin:0}
+.wordbox-label{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.wordbox-text{font-family:var(--serif);font-size:1rem;line-height:1.55;margin:0 0 8px}
+.wordbox .row{margin-top:8px}
+.glossary h1{margin-bottom:4px}
+.gloss-list{list-style:none;padding:0;margin:16px 0 0}
+.gloss-item{background:var(--surface);border:var(--edge);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:14px 20px;margin-bottom:12px}
+.gloss-head{display:flex;align-items:center;flex-wrap:wrap;gap:10px}
+.gloss-head h3{margin:0;font-size:1.05rem}
+.gloss-del{margin-left:auto;color:var(--muted)}
+
+/* design audit (redesign-existing-projects): small, targeted upgrades */
+p{text-wrap:pretty}
+/* the page height follows the real screen on phones (the address bar does not break the layout) */
+.login{min-height:100dvh}
+.layout{min-height:calc(100dvh - 56px)}
+@media (min-width:821px){.library{height:calc(100dvh - 56px)}}
+/* a very light grain breaks the flat digital look */
+body::after{content:"";position:fixed;inset:0;z-index:100;pointer-events:none;opacity:.032;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+:root[data-theme="dark"] body::after{opacity:.05;mix-blend-mode:screen}
+/* keyboard users jump over the navigation */
+.skip{position:absolute;left:12px;top:-64px;z-index:200;background:var(--primary);color:var(--primary-ink);padding:8px 14px;border-radius:var(--r-sm);font-weight:600;font-size:.88rem;text-decoration:none;transition:top .2s var(--ease)}
+.skip:focus{top:10px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}body::after{display:none}}
+.main:focus{outline:none}

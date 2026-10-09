@@ -4,7 +4,7 @@ no quote that the server shows as verified may be missing from the PDF.
 Usage:   python scripts/smoke_real_ai.py paper1.pdf paper2.pdf paper3.pdf [--fast-embeddings]
 Result:  exit code 0 = the check passed. 1 = a wrong quote shows as verified, or a paper failed. 2 = not run (no key, or no PDF).
 The data goes to a temporary folder. Your own library is not touched. The text of the PDFs goes to your AI provider."""
-import argparse, os, sys, tempfile, time
+import argparse, os, re, sys, tempfile, time
 from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # a Windows console cannot print every character of a paper
@@ -47,6 +47,35 @@ def show(card: dict) -> int:
     return shown
 
 
+def numbers(text: str) -> list[str]:
+    return sorted(re.findall(r"\d+(?:[.,]\d+)?", text or ""))
+
+
+def check_simple_and_words(client, h, pid, card, name) -> list[str]:
+    """Simple mode and the word helper on a real paper. Print the texts. Return the problems."""
+    problems = []
+    for field in ("method", "result"):
+        f = card["fields"].get(field) or {}
+        if f.get("status") not in ("verified", "check"):
+            continue
+        r = client.post(f"/api/papers/{pid}/simplify", headers=h, json={"field": field})
+        if r.status_code != 200:
+            print(f"  simple {field}: error {r.status_code} {r.text[:120]}")
+            continue
+        s = r.json()
+        print(f"  simple {field}: {'OK' if s['ok'] else 'kept the original (' + s['reason'] + ')'}\n      before: {f['answer'][:160]}\n      after:  {s['text'][:240]}")
+        if numbers(s["text"]) != numbers(f["answer"]):  # the server must never allow this
+            problems.append(f"{name}: THE SIMPLE TEXT OF {field} CHANGED A NUMBER")
+    for term in (card.get("keywords") or [])[:2]:
+        r = client.post(f"/api/papers/{pid}/define", headers=h, json={"term": term})
+        if r.status_code == 200:
+            d = r.json()
+            print(f"  word '{term}': [{d['label']}{' p.' + str(d['page']) if d['page'] else ''}] {d['explanation'][:200]}")
+        else:
+            print(f"  word '{term}': error {r.status_code} {r.text[:120]}")
+    return problems
+
+
 def main_run() -> int:
     pdfs = [Path(p) for p in args.pdfs]
     if not pdfs or not all(p.is_file() for p in pdfs):
@@ -85,6 +114,7 @@ def main_run() -> int:
             except AssertionError as e:
                 problems.append(f"{path.name}: WRONG QUOTE SHOWN AS VERIFIED. {str(e)[:200]}")
                 print("  ", problems[-1])
+            problems += check_simple_and_words(client, h, pid, got["card"], path.name)
     print("\n" + "=" * 60)
     if problems:
         print("RESULT: FAILED")

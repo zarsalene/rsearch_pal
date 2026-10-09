@@ -131,6 +131,32 @@ function FeatureSwitches({ features, onFeatures, notify }) {
   );
 }
 
+// Each answer of the AI is written in a log. The log has no text of your papers. It says which feature, which paper and which model.
+function AiUse({ notify }) {
+  const [log, setLog] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api.aiLog(1).then((d) => alive && setLog(d)).catch((e) => alive && notify(e.message));
+    return () => {
+      alive = false;
+    };
+  }, [notify]);
+  if (!log) return null;
+  const parts = Object.entries(log.by_feature);
+  return (
+    <div className="group">
+      <h2>AI use log</h2>
+      <p className="muted">
+        The app writes one line for each answer of the AI: the feature, the paper and the model. You can use this record for the AI use statement of your thesis.
+        A saved answer is not counted, because the AI did not help again.
+      </p>
+      <p>
+        {log.total === 0 ? "The AI has not helped yet." : `The AI helped ${log.total} ${log.total === 1 ? "time" : "times"}: ${parts.map(([f, n]) => `${f} ${n}`).join(", ")}.`}
+      </p>
+    </div>
+  );
+}
+
 export default function Settings({ config, features, onConfig, onFeatures, onImported, onLogout, notify }) {
   const [q, setQ] = useState("");
   const [msg, setMsg] = useState("");
@@ -240,6 +266,8 @@ export default function Settings({ config, features, onConfig, onFeatures, onImp
           <Icon name="trash" size={15} /> Delete saved answers
         </button>
       </div>
+
+      <AiUse notify={notify} />
 
       <div className="group">
         <h2>Session</h2>

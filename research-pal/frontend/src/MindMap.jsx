@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
+import SimpleText from "./SimpleText.jsx";
 
 const DOT = { verified: "ok", check: "warn", unverified: "bad", not_stated: "muted", not_found: "warn", edited: "info", suggestion: "info" };
 const DOT_TEXT = {
@@ -27,7 +28,7 @@ function Part({ n, paperId, hasPdf, notify, kids, collapsed, onToggle }) {
           </button>
         )}
       </div>
-      {n.answer ? <p>{n.answer}</p> : <p className="muted small">The card hides this claim, because the AI gave no proof for it. Read the paper yourself.</p>}
+      {n.answer ? <SimpleText text={n.answer} load={() => api.simplifyText(n.answer)} className="" /> : <p className="muted small">The card hides this claim, because the AI gave no proof for it. Read the paper yourself.</p>}
       {n.unverified_numbers?.length > 0 && <p className="warn-line">Not found in the paper: {n.unverified_numbers.join(", ")}</p>}
       {proof.length > 0 && (
         <details className="mm-proof">

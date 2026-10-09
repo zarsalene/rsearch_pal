@@ -63,6 +63,7 @@ All tools are in `backend/tests/`. `conftest.py` makes them available to each te
 | `client` | A test client for the real app. Each test has its own empty data folder. |
 | `auth_headers` | The headers of a signed-in user. Pass `headers=auth_headers` to each call. |
 | `fake_ai` | Replaces the AI. Without a rule, it gives the scripted answers for the test PDFs. |
+| `http_ai` | A fake AI provider behind the real `llm.py`. Use it to test the saved answers and the AI use log. Call `http_ai.activate()`. |
 | `sample_pdfs` | Two test PDFs, made with `reportlab`. `sample_pdfs["a.pdf"].path` is the file. |
 | `assert_no_false_quote(response, pages, invented)` | The truth check. Use it in each test of an AI feature. |
 

@@ -30,30 +30,64 @@ def sentences(pages: list[str]):
             yield n, s
 
 
-def _pattern_list(term: str) -> list[tuple[int, re.Pattern]]:
+def _pattern_list(term: str) -> list[tuple]:
     t = r"\s+".join(re.escape(w) for w in term.split())
     word = rf"(?<!\w){t}(?:s|es)?(?!\w)"
     q = r"[\"“'‘]?"
     flags = re.I
-    return [
-        # "Full Name (TERM)": the paper gives the long form of an abbreviation
-        (4, re.compile(rf"[A-Za-z][^()]{{4,100}}\(\s*{t}\s*\)", flags)),
-        # "TERM (the long form of the term)"
-        (4, re.compile(rf"(?<!\w){t}(?!\w)\s*\([A-Za-z][^)]*\s[^)]{{3,}}\)", flags)),
+    acronym = sum(c.isupper() for c in term) >= 2  # "BERT", "OpTC": a long form can define it
+    patterns = [
         # "TERM is a ...", "TERM refers to ...", "TERM means ..."
-        (3, re.compile(rf"{word}(?:\s*\([^)]{{0,80}}\))?\s+(?:(?:is|are)\s+(?:an?|the|defined|called|known)\b|refers?\s+to\b|denotes?\b|means\b|stands\s+for\b)", flags)),
+        (3, re.compile(rf"{word}(?:\s*\([^)]{{0,80}}\))?\s+(?:(?:is|are)\s+(?:an?|defined|called|known)\b|refers?\s+to\b|denotes?\b|means\b|stands\s+for\b)", flags)),
         # "we define TERM", "called TERM", "known as TERM"
         (3, re.compile(rf"\b(?:we|authors?)\s+(?:define|call|denote|term)\s+(?:(?:\w+\s+){{0,3}})(?:as\s+)?{q}{word}", flags)),
         (3, re.compile(rf"\b(?:called|known\s+as|termed|referred\s+to\s+as|defined\s+as)\s+{q}{word}", flags)),
     ]
+    if acronym:
+        # "Full Name (TERM)" and "TERM (Full Name)": the letters of the term must be the first letters of the long form
+        patterns.append((4, re.compile(rf"([A-Za-z][A-Za-z\- ]{{4,100}}?)\s*\(\s*{t}\s*\)", flags), "before"))
+        patterns.append((4, re.compile(rf"(?<!\w){t}(?!\w)\s*\(([A-Za-z][A-Za-z\- ]{{4,100}})\)", flags), "inside"))
+    return patterns
 
 
-def _trim(sentence: str, term: str) -> str:
-    if len(sentence) <= MAX_SENTENCE:
+_SMALL = {"of", "the", "and", "for", "from", "in", "on", "a", "an", "to", "with"}
+
+
+def _initials_match(term: str, long_form: str, at_end: bool) -> bool:
+    """True if the capital letters of the term are the first letters of the words of the long form, in order."""
+    letters = [c.lower() for c in term if c.isupper()]
+    ws = [w for w in re.split(r"[\s\-]+", long_form) if w and w.lower() not in _SMALL]
+    if len(ws) < len(letters):
+        return False
+    ws = ws[-len(letters):] if at_end else ws[: len(letters)]
+    return [w[0].lower() for w in ws] == letters
+
+
+def _is_prose(s: str) -> bool:
+    """A table row, a title block or a line of numbers is not a definition."""
+    letters = sum(c.isalpha() for c in s)
+    digits = sum(c.isdigit() for c in s)
+    return len(s.split()) <= 60 and letters > 0 and digits / (letters + digits) < 0.1
+
+
+def _match_start(pattern, s: str, term: str) -> int:
+    """Where the pattern matches in the sentence, or -1. An abbreviation counts only if the long form has the right first letters."""
+    if len(pattern) == 2:
+        m = pattern[1].search(s)
+        return m.start() if m else -1
+    _, rx, where = pattern
+    m = rx.search(s)
+    return m.start() if m and _initials_match(term, m.group(1), at_end=where == "before") else -1
+
+
+def _trim(sentence: str, start: int) -> str:
+    """At most MAX_SENTENCE characters, from a little before the place where the definition starts."""
+    if len(sentence) <= MAX_SENTENCE and start <= 150:
         return sentence
-    i = max(sentence.lower().find(term.lower()), 0)
-    start = max(0, min(i - 120, len(sentence) - MAX_SENTENCE))
-    return ("…" if start else "") + sentence[start : start + MAX_SENTENCE].strip() + "…"
+    a = max(0, start - 60)
+    if a:
+        a = sentence.find(" ", a) + 1 or a  # begin at a word
+    return ("\u2026" if a else "") + sentence[a : a + MAX_SENTENCE].strip() + "\u2026"
 
 
 def find_definition(pages: list[str], term: str) -> dict | None:
@@ -61,10 +95,15 @@ def find_definition(pages: list[str], term: str) -> dict | None:
     patterns = _pattern_list(term)
     best = None
     for page, s in sentences(pages):
-        score = max((w for w, p in patterns if p.search(s)), default=0)
-        if score and (best is None or score > best[0]):  # the first sentence with the best score wins: definitions come early
-            best = (score, page, s)
-    return {"page": best[1], "text": _trim(best[2], term)} if best else None
+        if not _is_prose(s):
+            continue
+        hits = [(p[0], _match_start(p, s, term)) for p in patterns]
+        hits = [(w, i) for w, i in hits if i >= 0]
+        if hits:
+            score, start = max(hits)
+            if best is None or score > best[0]:  # the first sentence with the best score wins: definitions come early
+                best = (score, page, s, start)
+    return {"page": best[1], "text": _trim(best[2], best[3])} if best else None
 
 
 def mentions(pages: list[str], term: str, n: int = 3) -> list[dict]:
@@ -74,7 +113,7 @@ def mentions(pages: list[str], term: str, n: int = 3) -> list[dict]:
     out = []
     for page, s in sentences(pages):
         if pat.search(s):
-            out.append({"page": page, "text": _trim(s, term)})
+            out.append({"page": page, "text": _trim(s, 0)})
             if len(out) == n:
                 break
     return out
@@ -102,7 +141,7 @@ def define(pid: str, term: str) -> dict:
     used = mentions(pages, term)
     if not used:  # the vectors find passages about the term when the exact word is not there (a plural, a synonym)
         try:
-            used = [{"page": h["page"], "text": _trim(re.sub(r"\s+", " ", h["text"]), term)[:300]} for h in vectors.query_paper(pid, term, 2)]
+            used = [{"page": h["page"], "text": _trim(re.sub(r"\s+", " ", h["text"]), 0)[:300]} for h in vectors.query_paper(pid, term, 2)]
         except Exception:  # a search index problem must not stop the answer
             used = []
     context = "\n".join(f"[page {m['page']}] {m['text']}" for m in used) or "(the paper does not use this term in a sentence that the server found)"

@@ -160,3 +160,19 @@ def test_backup_keeps_the_glossary(client, auth_headers, fake_ai, sample_pdfs):
     rows = client.get("/api/glossary", headers=h).json()
     assert [(r["id"], r["explanation"]) for r in rows] == [(g["id"], g["explanation"])]
     assert db_mod.glossary_find("hypothesis", pid)["source"] == "paper"
+
+
+def test_rules_from_real_papers():
+    """Found with real papers: a claim, a table row and a wrong abbreviation are not definitions."""
+    assert words.find_definition(one_page("The Transformer is the first model that uses only attention."), "Transformer") is None  # a claim
+    row = "Deep-Att + PosUnk Ensemble [39] 40.4 8.0 1020 GNMT + RL Ensemble [38] 26.30 41.16 1.8 1020 Transformer (big) 28.4 41.8 2.3 1019"
+    assert words.find_definition(one_page(row), "Transformer") is None  # a table row
+    assert words.find_definition(one_page("The Big Apple Tree Company (BERT) sells fruit."), "BERT") is None  # the letters do not match
+    ok = words.find_definition(one_page("We use Bidirectional Encoder Representations from Transformers (BERT) here."), "BERT")
+    assert ok and "(BERT)" in ok["text"]
+    long = "x " * 300 + "We introduce a model called BERT, which stands for a long name."
+    got = words.find_definition(one_page(long), "BERT")
+    assert got is None  # a block of more than 60 words is not a sentence
+    mid = "This is a long sentence with many words so that the cut is needed. " + "More text here to fill the line. " * 12 + "A baseline is a method for a comparison."
+    got = words.find_definition(one_page(mid), "baseline")
+    assert got and len(got["text"]) <= words.MAX_SENTENCE + 2 and "A baseline is a method" in got["text"] and got["text"].startswith("…") is False or "baseline is a method" in got["text"]
