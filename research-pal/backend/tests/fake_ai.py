@@ -1,11 +1,16 @@
 """A fake AI. It replaces llm.chat_json in the tests, so no test calls a real AI.
 Without a rule, the fake AI gives the scripted answers of the test PDFs in pdfs.py.
 Some answers are false on purpose (an invented quote, a number that is not in the PDF). The truth tests use them."""
+import json
 
 
 def default_answers(messages, max_tokens=None):
     user = messages[-1]["content"]
     system = messages[0]["content"]
+    if "You help a student who is new to a research field" in system:  # the simple version of a text
+        return {"text": "Simple: " + json.loads(user)["text"]}
+    if "You explain a word or a short term" in system:  # the word helper
+        return {"explanation": "A short explanation of the term."}
     if "You make a mind map" in system:
         def node(i, parent, label, quote, page, text="Explained."):
             return {"id": i, "parent": parent, "label": label, "explanation": text, "evidence": [{"quote": quote, "page": page}]}

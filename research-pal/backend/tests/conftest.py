@@ -76,6 +76,35 @@ def real_chat_json():
     return REAL_CHAT_JSON
 
 
+class HttpAI:
+    """A fake AI provider behind the real llm.py. The saved answers and the AI use log work as in the real app.
+    Give http_ai.answer a dict, or a function(body) that returns a dict. http_ai.calls lists each request. Call http_ai.activate() to start."""
+
+    def __init__(self, monkeypatch, real_chat_json):
+        self.calls, self.answer, self._mp, self._real = [], {}, monkeypatch, real_chat_json
+
+    def post(self, url, json=None, headers=None, timeout=None):
+        import json as jsonlib
+        self.calls.append(json)
+        out = self.answer(json) if callable(self.answer) else self.answer
+
+        class R:
+            status_code, headers = 200, {}
+            def json(_): return {"choices": [{"message": {"content": jsonlib.dumps(out)}, "finish_reason": "stop"}]}
+
+        return R()
+
+    def activate(self):
+        self._mp.setattr(llm, "chat_json", self._real)
+        self._mp.setattr(llm.httpx, "post", self.post)
+        return self
+
+
+@pytest.fixture
+def http_ai(monkeypatch, real_chat_json):
+    return HttpAI(monkeypatch, real_chat_json)
+
+
 @pytest.fixture
 def sample_pdfs(tmp_path):
     """The test PDFs of tests/pdfs.py. {"a.pdf": obj, "b.pdf": obj}. Each obj has path, title and pages (the text of each page)."""
