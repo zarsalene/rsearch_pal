@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import files, bibimport, sources, triage, auth, cards, chat, config, db, features, links, llm, mindmap, cite, coach, companion, critique, game, gaps, journey, metadata, pdf, play, project, quests, review, ste, today, understand, vectors, words, writing
+from . import files, bibimport, plan, sources, suggestions, triage, auth, cards, chat, config, db, features, links, llm, mindmap, cite, coach, companion, critique, game, gaps, journey, metadata, pdf, play, project, quests, review, ste, today, understand, vectors, words, writing
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -1563,7 +1563,8 @@ def export():
             "review_state": db.review_state_rows(), "quests_active": db.quests_all(), "activity": db.activity_list(),
             "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
             "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list(),
-            "play_rounds": [r for r in db.play_rounds_all() if r["finished"]], "play_items": db.play_items_list(), "to_read": db.to_read_list()}
+            "play_rounds": [r for r in db.play_rounds_all() if r["finished"]], "play_items": db.play_items_list(), "to_read": db.to_read_list(),
+            "milestones": db.milestones_list(), "milestone_tasks": db.tasks_list(), "weekly_reviews": db.reviews_list(), "journal": db.journal_list()}
 
 
 def restore_project(data: dict) -> None:
@@ -1727,6 +1728,30 @@ def import_backup(data: dict, background: BackgroundTasks):
             row = {"time": float(r["time"]), "feature": str(r["feature"])[:40], "paper_id": str(r.get("paper_id", ""))[:200], "provider": str(r["provider"])[:40], "model": str(r["model"])[:100]}
             if not db.ai_log_has(row):
                 db.ai_log_add(row["feature"], row["paper_id"], row["provider"], row["model"], row["time"])
+        except (KeyError, TypeError, ValueError):
+            pass
+    for m in data.get("milestones") or []:  # the plan and the journal are part of the backup. A row that exists is skipped.
+        try:
+            if str(m["id"]).isalnum() and not db.milestone_get(str(m["id"])):
+                db.milestone_add(str(m["title"]), str(m["due"]), int(m.get("position") or 0), str(m["id"]), int(m.get("done") or 0))
+        except (KeyError, TypeError, ValueError):
+            pass
+    for t in data.get("milestone_tasks") or []:
+        try:
+            if str(t["id"]).isalnum() and db.milestone_get(str(t["milestone_id"])) and not db.task_get(str(t["id"])):
+                db.task_add(str(t["milestone_id"]), str(t["week"]), str(t["text"]), bool(t.get("ai")), str(t["id"]), int(t.get("done") or 0), int(t.get("edited") or 0))
+        except (KeyError, TypeError, ValueError):
+            pass
+    for r in data.get("weekly_reviews") or []:
+        try:
+            if not db.review_for_week(str(r["week"])):
+                db.review_save(str(r["week"]), {k: str(r.get(k) or "") for k in ("done", "blocked", "learned", "next_goal")} | {"mood": int(r.get("mood") or 3)}, str(r.get("id") or "") or None)
+        except (KeyError, TypeError, ValueError):
+            pass
+    for j in data.get("journal") or []:
+        try:
+            if str(j["id"]).isalnum() and j["kind"] in plan.KINDS and not db.journal_get(str(j["id"])):
+                db.journal_add(str(j["date"]), j["kind"], str(j["text"])[: plan.MAX_TEXT], [str(i) for i in j.get("paper_ids") or []], [str(i) for i in j.get("card_ids") or []], str(j["id"]), float(j.get("created_at") or 0) or None)
         except (KeyError, TypeError, ValueError):
             pass
     for r in data.get("to_read") or []:  # the To read list is part of the backup. An item that exists is skipped.
@@ -1931,13 +1956,17 @@ def rescore_to_read() -> None:
         return
     tg = triage.targets()
     for it in db.to_read_list():
+        if it["source"] == "suggested":
+            continue  # a suggestion has its own score (links and fit). The daily run makes it again.
         s = triage.score(it["abstract"] or it["title"], tg)
         db.to_read_set(it["id"], score=s["score"], reason=s["reason"])
     db.set_setting("triage_stamp", stamp)
 
 
 @app.get("/api/to-read", dependencies=FIND)
-def get_to_read():
+def get_to_read(background: BackgroundTasks):
+    if features.is_enabled("suggest") and suggestions.due() and db.list_papers():
+        background.add_task(suggestions.run_if_due)  # once a day, in the background
     rescore_to_read()
     return [i for i in db.to_read_list() if i["status"] == "new"]
 
@@ -1994,3 +2023,106 @@ async def upload_to_read(rid: str, background: BackgroundTasks, file: UploadFile
     out = new_paper_from_meta(meta, data, background)
     db.to_read_set(rid, status="read")
     return out
+
+
+@app.post("/api/suggestions/refresh", dependencies=[Depends(auth.require_auth), Depends(features.require("suggest"))])
+def refresh_suggestions():
+    """Look for suggestions now. They go to the To read list with the source "suggested"."""
+    return run_sources(suggestions.refresh)
+
+
+# ---------- Plan: timeline, weekly review, journal (Sprint 11) ----------
+PLAN = [Depends(auth.require_auth), Depends(features.require("plan"))]
+
+
+def run_plan(fn, *args):
+    try:
+        return fn(*args)
+    except plan.PlanError as e:
+        raise HTTPException(400, str(e))
+    except llm.LLMError as e:
+        raise HTTPException(502, str(e))
+
+
+@app.get("/api/plan", dependencies=PLAN)
+def get_plan():
+    return plan.view()
+
+
+@app.post("/api/milestones/defaults", dependencies=PLAN)
+def milestone_defaults():
+    return run_plan(plan.make_defaults)
+
+
+@app.post("/api/milestones", dependencies=PLAN)
+def milestone_add(body: dict):
+    return run_plan(plan.add_milestone, body.get("title"), body.get("due"))
+
+
+@app.put("/api/milestones/{mid}", dependencies=PLAN)
+def milestone_edit(mid: str, body: dict):
+    return run_plan(plan.edit_milestone, mid, body)
+
+
+@app.delete("/api/milestones/{mid}", dependencies=PLAN)
+def milestone_delete(mid: str):
+    db.milestone_delete(mid)
+    return {"ok": True}
+
+
+@app.post("/api/milestones/{mid}/split", dependencies=PLAN)
+def milestone_split(mid: str):
+    """The AI suggests weekly tasks. They have the label "AI suggestion". The student edits them."""
+    with llm.cache_scope(""), llm.ai_context("plan", mid):
+        return run_plan(plan.split, mid)
+
+
+@app.post("/api/milestones/{mid}/tasks", dependencies=PLAN)
+def task_add(mid: str, body: dict):
+    return run_plan(plan.add_task, mid, body.get("week") or plan.current_week(), body.get("text"))
+
+
+@app.put("/api/tasks/{tid}", dependencies=PLAN)
+def task_edit(tid: str, body: dict):
+    return run_plan(plan.edit_task, tid, body)
+
+
+@app.delete("/api/tasks/{tid}", dependencies=PLAN)
+def task_delete(tid: str):
+    db.task_delete(tid)
+    return {"ok": True}
+
+
+@app.get("/api/weekly-review", dependencies=PLAN)
+def get_weekly_review():
+    return plan.reviews_view()
+
+
+@app.put("/api/weekly-review", dependencies=PLAN)
+def put_weekly_review(body: dict):
+    r = run_plan(plan.save_review, body)
+    gained = game.XP["weekly_review"] if game_event(game.check_weekly_review, r["week"]) else 0  # 15 points, one time for each week
+    return {"review": r, "xp_gained": gained}
+
+
+@app.get("/api/journal", dependencies=PLAN)
+def get_journal(kind: str = ""):
+    return run_plan(plan.journal_view, kind or None)
+
+
+@app.post("/api/journal", dependencies=PLAN)
+def add_journal(body: dict):
+    e = run_plan(plan.add_entry, body)
+    gained = game.XP["journal"] if game_event(game.check_journal, e["id"]) else 0  # 3 points, at most 5 entries each day
+    return {**e, "xp_gained": gained}
+
+
+@app.put("/api/journal/{jid}", dependencies=PLAN)
+def edit_journal(jid: str, body: dict):
+    return run_plan(plan.edit_entry, jid, body)
+
+
+@app.delete("/api/journal/{jid}", dependencies=PLAN)
+def delete_journal(jid: str):
+    db.journal_delete(jid)
+    return {"ok": True}

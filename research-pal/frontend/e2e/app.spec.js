@@ -238,8 +238,8 @@ test.describe.serial("Research Pal", () => {
     await expect(map.getByRole("group", { name: /Map of the PhD road/ })).toBeVisible();
     await map.locator("g.region").first().click(); // Question Peak
     await expect(page.getByRole("region", { name: /Question Peak: what to do/ })).toContainText("First step");
-    await map.locator("g.region").nth(2).click(); // Method Workshop: a later sprint
-    await expect(page.getByRole("region", { name: /Method Workshop: what to do/ })).toContainText("later sprint");
+    await map.locator("g.region").nth(2).click(); // Method Workshop: it fills with the decisions of the journal
+    await expect(page.getByRole("region", { name: /Method Workshop: what to do/ })).toContainText("Plan tab");
     for (const name of ["Method Workshop", "Data Mines", "Writing Coast", "Defense Castle"]) {
       await expect(map.getByRole("button", { name: new RegExp(name + ", 0%, Not started") })).toBeVisible(); // these features come in later sprints
     }
@@ -511,6 +511,45 @@ test.describe.serial("Research Pal", () => {
     expect(await points()).toBe(before); // play and shop gave no points
   });
 
+  test("Plan: a milestone, weekly tasks from the AI, a weekly review, a journal decision that fills the map", async ({ page }) => {
+    await signIn(page, true);
+    await page.getByRole("tab", { name: "Plan" }).click();
+    const timeline = page.getByRole("region", { name: "Timeline" });
+    await timeline.getByLabel("New milestone", { exact: true }).fill("First paper");
+    await timeline.getByLabel("Due date of the new milestone").fill("2027-01-15");
+    await timeline.getByRole("button", { name: "Add milestone" }).click();
+    await expect(timeline.getByRole("img", { name: /Timeline from today/ })).toBeVisible();
+    await timeline.getByRole("button", { name: "Suggest weekly tasks" }).click();
+    await expect(timeline.getByText("AI suggestion").first()).toBeVisible(); // the AI text has its label
+    await expect(timeline.getByLabel("Task: Read two papers about the method.", { exact: true })).toBeVisible();
+    await timeline.getByRole("checkbox", { name: "Done: Read two papers about the method." }).click();
+    await expect(timeline.getByText(/1 of 4 tasks done/)).toBeVisible();
+    // the student changes an AI task: the label goes away
+    const task = timeline.getByLabel("Task: Tag the papers to your sub-questions.", { exact: true });
+    await task.fill("Tag my papers to the sub-questions.");
+    await task.blur();
+    await expect(timeline.getByLabel("Task: Tag my papers to the sub-questions.", { exact: true })).toBeVisible();
+    await expect(timeline.getByText("AI suggestion")).toHaveCount(3);
+
+    // the weekly review: points one time
+    const review = page.getByRole("region", { name: "Weekly review", exact: true });
+    await review.getByLabel("What did you do this week?").fill("Read two papers.");
+    await review.getByLabel("Good", { exact: true }).click();
+    await review.getByRole("button", { name: "Save the review" }).click();
+    await expect(review).toContainText("+15 points");
+    await review.getByRole("button", { name: "Update the review" }).click();
+    await expect(review.getByRole("status")).toHaveText(/^\s*Saved\.\s*$/); // a second save gives no points
+
+    // the journal: a decision fills the Method Workshop
+    const journal = page.getByRole("region", { name: "Research journal" });
+    await journal.getByLabel("Kind").selectOption("decision");
+    await journal.getByLabel("Journal entry").fill("I use a validation agent to check each hypothesis.");
+    await journal.getByRole("button", { name: "Save the entry" }).click();
+    await expect(journal).toContainText("I use a validation agent");
+    await page.getByRole("tab", { name: "Journey" }).click();
+    await expect(page.getByRole("button", { name: /Method Workshop, 10%, Growing/ })).toBeVisible();
+  });
+
   test("Find papers: add by DOI (and not twice), import a BibTeX file, rate the To read list", async ({ page }) => {
     await signIn(page, true);
     const library = page.getByRole("complementary", { name: "Library" });
@@ -546,6 +585,12 @@ test.describe.serial("Research Pal", () => {
     await expect(list.locator(".toreaditem").first()).toContainText("Fits");
     await list.locator(".toreaditem").nth(1).getByRole("button", { name: "Not useful" }).click();
     await expect(list.locator(".toreaditem")).toHaveCount(1);
+
+    // suggestions: from the references and the citations of the library papers. Each has a tag and a true reason.
+    await list.getByRole("button", { name: "Suggest papers now" }).click();
+    await expect(page.getByText(/new suggestions? in your To read list/)).toBeVisible();
+    await expect(list.getByText("Suggested").first()).toBeVisible();
+    await expect(list.getByText(/Cited by \d+ of your papers|Cites \d+ of your papers/).first()).toBeVisible();
   });
 
 });

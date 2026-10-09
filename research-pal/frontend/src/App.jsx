@@ -16,6 +16,7 @@ import Glossary from "./Glossary.jsx";
 import Today from "./Today.jsx";
 import Journey from "./Journey.jsx";
 import ToRead from "./ToRead.jsx";
+import Plan from "./Plan.jsx";
 import Review from "./Review.jsx";
 import Write from "./Write.jsx";
 import GameWatcher from "./GameWatcher.jsx";
@@ -28,6 +29,7 @@ const TABS = [
   ["review", "Review", "refresh"],
   ["journey", "Journey", "chart"],
   ["toread", "To read", "layers"],
+  ["plan", "Plan", "check"],
   ["cards", "Card", "doc"],
   ["chat", "Chat", "chat"],
   ["search", "Search", "search"],
@@ -131,7 +133,7 @@ export default function App() {
 
   // A feature that is switched off in Settings has no tab. While the list loads, all features show.
   const on = (name) => features?.find((f) => f.name === name)?.enabled !== false;
-  const hidden = { write: !on("litreview"), today: !on("today"), review: !on("review"), journey: !on("game") && !on("map"), chat: !on("chat"), project: !on("direction"), glossary: !on("glossary"), toread: !on("findpapers") }; // a tab of a feature that is switched off
+  const hidden = { write: !on("litreview"), today: !on("today"), review: !on("review"), journey: !on("game") && !on("map"), chat: !on("chat"), project: !on("direction"), glossary: !on("glossary"), toread: !on("findpapers"), plan: !on("plan") }; // a tab of a feature that is switched off
   const shownTabs = TABS.filter(([k]) => !hidden[k]);
   const page = hidden[tab] ? "cards" : tab;
   const paperTags = papers.find((p) => p.id === selected)?.tags || {};
@@ -265,12 +267,13 @@ export default function App() {
               <Chat papers={papers} selectedId={selected} onOpenCard={openPaper} notify={setNotice} />
             </div>
           )}
-          {page === "today" && <Today papers={papers} onAction={goAction} gameOn={on("game")} reviewOn={on("review")} questsOn={on("quests") && on("game")} onOpenReview={() => setTab("review")} notify={setNotice} />}
+          {page === "today" && <Today papers={papers} onAction={goAction} gameOn={on("game")} reviewOn={on("review")} questsOn={on("quests") && on("game")} planOn={on("plan")} onOpenReview={() => setTab("review")} notify={setNotice} />}
           {page === "review" && <Review notify={setNotice} />}
           {page === "write" && <Write notify={setNotice} onChanged={() => {}} gapsOn={on("gaps")} coachOn={on("coach")} />}
           {page === "journey" && <Journey notify={setNotice} avatarOn={on("avatar")} playOn={on("play")} mapOn={on("map")} gameOn={on("game")} questsOn={on("quests") && on("game")} onGo={(target) => setTab(hidden[target] ? "cards" : target)} />}
           {page === "glossary" && <Glossary reloadKey={glossKey} notify={setNotice} />}
-          {page === "toread" && <ToRead onChanged={refresh} notify={setNotice} />}
+          {page === "toread" && <ToRead onChanged={refresh} notify={setNotice} suggestOn={on("suggest")} />}
+          {page === "plan" && <Plan notify={setNotice} papers={papers} />}
           {tab === "search" && <Search onOpenCard={openPaper} notify={setNotice} />}
           {tab === "links" && <Graph onOpenCard={openPaper} notify={setNotice} />}
           {page === "project" && <Project project={project} subQuestions={subQuestions} onProject={changeProject} onSubQuestions={setSubQuestions} notify={setNotice} />}

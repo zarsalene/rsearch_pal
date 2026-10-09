@@ -37,6 +37,9 @@ make_pdf(_pdf_file, PAPERS["a.pdf"][1])
 _PDF_BYTES = _pdf_file.read_bytes()
 os.environ["CONTACT_EMAIL"] = "student@example.org"
 sources.fetch = lambda url, params=None: recorded_sources.route(url, params, _PDF_BYTES, True)
+from app import suggestions
+
+suggestions.due = lambda: False  # the daily run would add items by itself. The browser test clicks "Suggest papers now".
 
 if args.pdf_dir:
     out = Path(args.pdf_dir)

@@ -9,7 +9,7 @@ import datetime as dt
 from . import cards, db
 
 # action -> XP. "focus_session" gives 1 XP for each 5 minutes, for a session of 20 minutes or more.
-XP = {"card_ready": 10, "feynman_pass": 25, "quiz_correct": 5, "link_explained": 10, "win_written": 2, "review": 2}
+XP = {"card_ready": 10, "feynman_pass": 25, "quiz_correct": 5, "link_explained": 10, "win_written": 2, "review": 2, "weekly_review": 15, "journal": 3}
 MAX_REVIEW_XP_PER_DAY = 20
 FOCUS_MIN_MINUTES, FOCUS_STEP_MINUTES = 20, 5
 FEYNMAN_PASS_SCORE = 70
@@ -18,7 +18,7 @@ TOKENS_PER_WEEK = 2
 ACTION_LABEL = {
     "card_ready": "A card with checked quotes", "feynman_pass": "A Feynman check passed", "quiz_correct": "A quiz answer that is correct",
     "link_explained": "A link explained with quotes", "focus_session": "A focus session", "win_written": "A win written", "review": "A review of an item",
-    "quest": "A quest done", "boss": "A boss defeated",
+    "quest": "A quest done", "boss": "A boss defeated", "weekly_review": "A weekly review", "journal": "A journal entry",
 }
 
 # (name, XP needed, the conditions of the skill). A condition is (key, text, number needed).
@@ -115,6 +115,22 @@ def check_review(item_id: str, reps: int) -> bool:
     if db.xp_by_day("review").get(today, 0) + XP["review"] > MAX_REVIEW_XP_PER_DAY:
         return False
     return award("review", f"{item_id}:{reps}")
+
+
+MAX_JOURNAL_PER_DAY = 5
+
+
+def check_weekly_review(week: str) -> bool:
+    """15 points for the review of a week, one time for each week."""
+    return award("weekly_review", week)
+
+
+def check_journal(entry_id: str) -> bool:
+    """3 points for a journal entry, at most 5 entries (15 points) each day."""
+    today = local_date(db.now())
+    if db.xp_by_day("journal", count=True).get(today, 0) >= MAX_JOURNAL_PER_DAY:
+        return False
+    return award("journal", entry_id)
 
 
 def check_win(date: str) -> bool:

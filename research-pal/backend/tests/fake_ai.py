@@ -63,6 +63,10 @@ def default_answers(messages, max_tokens=None):
     if "You mark the answer of a student" in system:  # the mark of a quiz answer
         student = json.loads(user)["student_answer"].lower()
         return {"mark": "correct", "comment": "Good answer."} if "sysmon" in student or "optc" in student else {"mark": "wrong", "comment": "Look at the quote again."}
+    if "You help a PhD student to plan the weeks before ONE milestone" in system:  # the weekly tasks of a milestone (Sprint 11)
+        return {"tasks": [{"week": 1, "text": "Read two papers about the method."}, {"week": 1, "text": "Tag the papers to your sub-questions."},
+                          {"week": 2, "text": "Write the plan of the first test."}, {"week": 3, "text": "Ask your supervisor to check the plan."},
+                          {"week": 99, "text": "A week that does not exist."}, {"week": 2, "text": ""}, {"week": "x", "text": "A bad week."}]}
     if "You help a student who is new to a research field" in system:  # the simple version of a text
         return {"text": "Simple: " + json.loads(user)["text"]}
     if "You explain a word or a short term" in system:  # the word helper

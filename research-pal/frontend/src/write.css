@@ -40,3 +40,28 @@
 .qitems{padding-left:1.2em;display:grid;gap:12px}
 .qitem.yes{border-left:3px solid var(--ok);padding-left:8px}
 .qitem.no{border-left:3px solid var(--warn);padding-left:8px}
+
+/* ---- Plan (Sprint 11) ---- */
+.timeline{position:relative;height:96px;margin:18px 8px 26px}
+.tline{position:absolute;left:0;right:0;top:34px;height:3px;border-radius:3px;background:var(--line-strong)}
+.tnow{position:absolute;top:10px;transform:translateX(-50%);font-size:.78rem;color:var(--accent);font-weight:600;text-align:center}
+.tnow::after{content:"";display:block;width:2px;height:26px;margin:2px auto 0;background:var(--accent)}
+.tmile{position:absolute;top:28px;transform:translateX(-50%);text-align:center}
+.tmile .tdot{display:block;width:14px;height:14px;margin:0 auto;border-radius:50%;background:var(--surface);border:3px solid var(--accent)}
+.tmile.done .tdot{background:var(--ok);border-color:var(--ok)}
+.tmile .tlabel{display:block;font-size:.78rem;font-weight:600;margin-top:6px;max-width:120px}
+.tmile.low .tlabel{margin-top:6px}
+.tmile .tlabel small{display:block;font-weight:400;color:var(--muted)}
+.milestones{list-style:none;padding:0;display:grid;gap:14px}
+.milestone{border:var(--edge);border-radius:var(--r-lg);padding:12px 14px;background:var(--surface)}
+.milestone.done strong{text-decoration:line-through;color:var(--muted)}
+.tweek ul{list-style:none;padding:0;margin:4px 0 8px}
+.tweek li{display:flex;align-items:center;gap:8px;margin:3px 0}
+.tasktext{flex:1;min-width:0}
+.tag{padding:1px 8px;border-radius:999px;background:var(--accent-soft);color:var(--accent);font-weight:600}
+.mood{border:0;padding:0;margin:8px 0}
+.mood label{display:inline-block;margin-right:10px;font-size:.92rem}
+.mood label.on{font-weight:600}
+.moodchart{width:100%;max-width:520px;color:var(--accent)}
+.journal{list-style:none;padding:0}
+.journal li{border-top:var(--edge);padding:8px 0}

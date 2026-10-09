@@ -246,7 +246,7 @@ def test_the_map_of_a_new_student_is_empty_and_kind(client, auth_headers):
     assert [r["code"] for r in m["regions"]] == ["peak", "forest", "workshop", "mines", "coast", "castle"]
     assert [r["name"] for r in m["regions"]][0] == "Question Peak" and m["total"] == 0
     assert all(r["percent"] == 0 and r["state"] == "not_started" and r["first_step"] for r in m["regions"])
-    assert m["regions"][0]["first_step"] == "Write your thesis title." and "later sprint" in m["regions"][2]["first_step"]
+    assert m["regions"][0]["first_step"] == "Write your thesis title." and "Plan tab" in m["regions"][2]["first_step"]
 
 
 def test_question_peak_fills_with_title_question_and_sub_questions(client, auth_headers):
@@ -285,11 +285,13 @@ def test_literature_forest_counts_ready_cards_and_feynman_passes_for_each_sub_qu
 def test_the_regions_of_later_sprints_wait_for_their_tables(client):
     db.init()
     assert journey.method_workshop()["percent"] == journey.data_mines()["percent"] == journey.writing_coast()["percent"] == journey.defense_castle()["percent"] == 0
-    with db.conn() as c:  # a later sprint makes these tables
-        c.execute("CREATE TABLE journal(id TEXT, kind TEXT)")
-        c.executemany("INSERT INTO journal VALUES(?,?)", [(str(i), "idea") for i in range(5)] + [("e1", "experiment")])
+    for i in range(5):  # the research journal (Sprint 11): decisions fill the Method Workshop. An idea fills no region.
+        db.journal_add("2026-10-09", "decision", f"Decision {i}", [], [])
+    db.journal_add("2026-10-09", "idea", "An idea", [], [])
+    db.journal_add("2026-10-09", "experiment", "Experiment 1", [], [])
+    db.journal_add("2026-10-09", "result", "Result 1", [], [])
     db.review_section_add(db.review_doc()["id"], "A section", "", "word " * 300)  # the literature review builder (Sprint 08)
-    assert journey.method_workshop()["percent"] == 50 and journey.data_mines()["percent"] == 10 and journey.writing_coast()["percent"] == 20
+    assert journey.method_workshop()["percent"] == 50 and journey.data_mines()["percent"] == 20 and journey.writing_coast()["percent"] == 20
 
 
 def test_the_texts_of_the_garden_and_the_map_are_kind(client):

@@ -4,6 +4,7 @@ import json
 AUTOMA_DOI = "10.1234/automa.2024.01"
 
 OPENALEX_AUTOMA = {
+    "id": "https://openalex.org/W100", "referenced_works": ["https://openalex.org/W201", "https://openalex.org/W202", "https://openalex.org/W203"],
     "title": "AUTOMA: Multi-agent threat hunting", "publication_year": 2024, "doi": f"https://doi.org/{AUTOMA_DOI}",
     "authorships": [{"author": {"display_name": "Jane Smith"}}, {"author": {"display_name": "Li Wei"}}],
     "primary_location": {"source": {"display_name": "Journal of Cyber Tests"}},
@@ -13,6 +14,7 @@ OPENALEX_AUTOMA = {
 # A paper with a wrong author: the PDF does not name this person. The app must flag the field.
 OPENALEX_WRONG_AUTHOR = {**OPENALEX_AUTOMA, "authorships": [{"author": {"display_name": "Nobody Atall"}}]}
 OPENALEX_NO_PDF = {
+    "id": "https://openalex.org/W101", "referenced_works": ["https://openalex.org/W201", "https://openalex.org/W203"],
     "title": "A closed paper about threat hunting", "publication_year": 2023, "doi": "https://doi.org/10.9999/closed.1",
     "authorships": [{"author": {"display_name": "Ana Closed"}}], "primary_location": {"source": {"display_name": "Closed Journal"}},
     "best_oa_location": None, "open_access": {}, "abstract_inverted_index": {"A": [0], "closed": [1], "study": [2], "of": [3], "threat": [4], "hunting": [5], "agents.": [6]},
@@ -62,6 +64,23 @@ ER  -
 """
 
 
+def _work(wid: str, title: str, doi: str, abstract: str) -> dict:
+    inv = {w: [i] for i, w in enumerate(abstract.split())}
+    return {"id": f"https://openalex.org/{wid}", "title": title, "publication_year": 2022, "doi": f"https://doi.org/{doi}" if doi else None,
+            "authorships": [{"author": {"display_name": "Ann Author"}}], "primary_location": {"source": {"display_name": "Some Journal"}},
+            "best_oa_location": None, "open_access": {}, "abstract_inverted_index": inv, "referenced_works": []}
+
+
+# The candidates of the suggestions. W201 is cited by both library papers. W301 cites both. W202 is in the library already (same DOI).
+CANDIDATES = {
+    "W201": _work("W201", "Hunting threats with agents in network logs", "10.2000/w201", "Agents hunt cyber threats in network logs"),
+    "W202": _work("W202", "A paper that you have already", AUTOMA_DOI, "Already in the library"),
+    "W203": _work("W203", "Cooking pasta with tomatoes", "10.2000/w203", "How to cook pasta with tomato sauce and basil"),
+    "W301": _work("W301", "Validation agents for threat hunting", "10.2000/w301", "A validation agent checks each hypothesis of a threat hunting system"),
+}
+CITED_BY = {"W100": ["W301", "W9"], "W101": ["W301"]}  # W9 is not in CANDIDATES: OpenAlex gives no record for it
+
+
 def route(url: str, params: dict | None, pdf_bytes: bytes, free: bool = True):
     """(status, content type, body) for a recorded call."""
     params = params or {}
@@ -75,6 +94,11 @@ def route(url: str, params: dict | None, pdf_bytes: bytes, free: bool = True):
         if doi == "10.1111/wrongauthor":
             return j(OPENALEX_WRONG_AUTHOR)
         return j({}, 404)
+    if url == "https://api.openalex.org/works" and str(params.get("filter", "")).startswith("cites:"):
+        return j({"results": [{"id": f"https://openalex.org/{i}"} for i in CITED_BY.get(params["filter"].split(":")[1], [])]})
+    if url == "https://api.openalex.org/works" and str(params.get("filter", "")).startswith("openalex:"):
+        ids = params["filter"].split(":")[1].split("|")
+        return j({"results": [CANDIDATES[i] for i in ids if i in CANDIDATES]})
     if url == "https://api.openalex.org/works":
         q = params.get("search", "").lower()
         return j({"results": [OPENALEX_AUTOMA]} if "automa" in q else {"results": []})

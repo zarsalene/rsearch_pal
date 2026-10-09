@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
 
 // Papers that you did not read yet, with a fit score for your question. The score comes from the abstract, not from the AI. The reason shows the words that fit.
-export default function ToRead({ onChanged, notify }) {
+export default function ToRead({ onChanged, notify, suggestOn = false }) {
   const [items, setItems] = useState(null);
   const [busy, setBusy] = useState("");
   const load = useCallback(() => api.toRead().then(setItems).catch((e) => notify(e.message)), [notify]);
@@ -36,6 +36,18 @@ export default function ToRead({ onChanged, notify }) {
       setBusy("");
     }
   };
+  const suggest = async () => {
+    setBusy("suggest");
+    try {
+      const r = await api.refreshSuggestions();
+      notify(r.message);
+      await load();
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setBusy("");
+    }
+  };
   const notUseful = async (it) => {
     try {
       await api.setToRead(it.id, "not_useful");
@@ -50,6 +62,14 @@ export default function ToRead({ onChanged, notify }) {
     <section className="toread" aria-label="To read">
       <h1>To read</h1>
       <p className="lead">Papers that you did not read yet. The best fit for your question is first. The score comes from the abstract and your question. Read the reason before you trust it.</p>
+      {suggestOn && (
+        <p>
+          <button className="btn small ghost" disabled={busy === "suggest"} onClick={suggest}>
+            {busy === "suggest" ? "Looking…" : "Suggest papers now"}
+          </button>{" "}
+          <span className="small muted">The app also looks once a day. It uses the references and citations of your papers.</span>
+        </p>
+      )}
       {items.length === 0 ? (
         <p className="muted">The list is empty. Import a BibTeX or RIS file in Settings, or add a paper by DOI in the library with “Add to To read”.</p>
       ) : (
@@ -60,7 +80,7 @@ export default function ToRead({ onChanged, notify }) {
                 {it.score}
               </div>
               <div className="trbody">
-                <strong>{it.title}</strong>
+                <strong>{it.title}</strong> {it.source === "suggested" && <span className="small tag">Suggested</span>}
                 <p className="small muted">
                   {[it.authors.slice(0, 3).map((a) => a.split(",")[0]).join(", "), it.year, it.venue].filter(Boolean).join(" · ")}
                 </p>

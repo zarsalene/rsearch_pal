@@ -88,6 +88,14 @@ CREATE TABLE IF NOT EXISTS critiques(
 CREATE TABLE IF NOT EXISTS to_read(
   id TEXT PRIMARY KEY, doi TEXT DEFAULT '', title TEXT, abstract TEXT DEFAULT '', authors_json TEXT DEFAULT '[]', year TEXT DEFAULT '',
   venue TEXT DEFAULT '', score INTEGER DEFAULT 0, reason TEXT DEFAULT '', added_at REAL, status TEXT DEFAULT 'new', source TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS milestones(
+  id TEXT PRIMARY KEY, title TEXT, due TEXT, done INTEGER DEFAULT 0, position INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS milestone_tasks(
+  id TEXT PRIMARY KEY, milestone_id TEXT, week TEXT, text TEXT, done INTEGER DEFAULT 0, ai INTEGER DEFAULT 0, edited INTEGER DEFAULT 0, position INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS weekly_reviews(
+  id TEXT PRIMARY KEY, week TEXT UNIQUE, done TEXT DEFAULT '', blocked TEXT DEFAULT '', learned TEXT DEFAULT '', next_goal TEXT DEFAULT '', mood INTEGER DEFAULT 3, updated_at REAL);
+CREATE TABLE IF NOT EXISTS journal(
+  id TEXT PRIMARY KEY, date TEXT, kind TEXT, text TEXT, paper_ids TEXT DEFAULT '[]', card_ids TEXT DEFAULT '[]', created_at REAL);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS llm_cache(key TEXT PRIMARY KEY, tag TEXT, provider TEXT, model TEXT, response TEXT, created_at REAL);
 
@@ -1343,6 +1351,14 @@ def to_read_add(item: dict, rid: str | None = None, added_at: float | None = Non
     return to_read_get(rid)
 
 
+def to_read_find(doi: str = "", title: str = ""):
+    doi, nt = (doi or "").lower(), _norm_title(title)
+    for it in to_read_list():
+        if (doi and it["doi"] == doi) or (nt and _norm_title(it["title"]) == nt):
+            return it
+    return None
+
+
 def _to_read_row(r) -> dict:
     d = dict(r)
     d["authors"] = json.loads(d.pop("authors_json") or "[]")
@@ -1371,3 +1387,135 @@ def to_read_set(rid: str, **fields) -> None:
 def to_read_delete(rid: str) -> None:
     with conn() as c:
         c.execute("DELETE FROM to_read WHERE id=?", (rid,))
+
+
+# ---------- Plan (Sprint 11): milestones, weekly tasks, weekly review, research journal ----------
+def milestone_add(title: str, due: str, position: int | None = None, mid: str | None = None, done: int = 0) -> dict:
+    mid = mid or new_id()
+    with conn() as c:
+        pos = position if position is not None else c.execute("SELECT COALESCE(MAX(position),0)+1 AS n FROM milestones").fetchone()["n"]
+        c.execute("INSERT INTO milestones(id,title,due,done,position) VALUES(?,?,?,?,?)", (mid, title[:200], due, int(bool(done)), pos))
+    return milestone_get(mid)
+
+
+def milestone_get(mid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM milestones WHERE id=?", (mid,)).fetchone()
+    return dict(r) if r else None
+
+
+def milestones_list() -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM milestones ORDER BY due, position, rowid")]
+
+
+def milestone_update(mid: str, **fields) -> None:
+    allowed = {k: v for k, v in fields.items() if k in ("title", "due", "done")}
+    if allowed:
+        with conn() as c:
+            c.execute(f"UPDATE milestones SET {', '.join(k + '=?' for k in allowed)} WHERE id=?", (*allowed.values(), mid))
+
+
+def milestone_delete(mid: str) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM milestone_tasks WHERE milestone_id=?", (mid,))
+        c.execute("DELETE FROM milestones WHERE id=?", (mid,))
+
+
+def task_add(mid: str, week: str, text: str, ai: bool = False, tid: str | None = None, done: int = 0, edited: int = 0) -> dict:
+    tid = tid or new_id()
+    with conn() as c:
+        pos = c.execute("SELECT COALESCE(MAX(position),0)+1 AS n FROM milestone_tasks WHERE milestone_id=?", (mid,)).fetchone()["n"]
+        c.execute("INSERT INTO milestone_tasks(id,milestone_id,week,text,done,ai,edited,position) VALUES(?,?,?,?,?,?,?,?)", (tid, mid, week, text[:300], int(bool(done)), int(bool(ai)), int(bool(edited)), pos))
+    return task_get(tid)
+
+
+def task_get(tid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM milestone_tasks WHERE id=?", (tid,)).fetchone()
+    return dict(r) if r else None
+
+
+def tasks_list(mid: str | None = None) -> list[dict]:
+    with conn() as c:
+        rows = c.execute("SELECT * FROM milestone_tasks WHERE milestone_id=? ORDER BY week, position", (mid,)) if mid else c.execute("SELECT * FROM milestone_tasks ORDER BY week, position")
+        return [dict(r) for r in rows]
+
+
+def task_update(tid: str, **fields) -> None:
+    allowed = {k: v for k, v in fields.items() if k in ("text", "done", "week", "edited")}
+    if allowed:
+        with conn() as c:
+            c.execute(f"UPDATE milestone_tasks SET {', '.join(k + '=?' for k in allowed)} WHERE id=?", (*allowed.values(), tid))
+
+
+def task_delete(tid: str) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM milestone_tasks WHERE id=?", (tid,))
+
+
+def tasks_delete_ai_open(mid: str) -> None:
+    """The AI tasks that the student did not touch and did not check. A new split replaces only these."""
+    with conn() as c:
+        c.execute("DELETE FROM milestone_tasks WHERE milestone_id=? AND ai=1 AND edited=0 AND done=0", (mid,))
+
+
+def review_save(week: str, fields: dict, rid: str | None = None) -> dict:
+    """One review for each week. A second save updates the first."""
+    with conn() as c:
+        old = c.execute("SELECT id FROM weekly_reviews WHERE week=?", (week,)).fetchone()
+        if old:
+            c.execute("UPDATE weekly_reviews SET done=?,blocked=?,learned=?,next_goal=?,mood=?,updated_at=? WHERE id=?",
+                      (fields["done"], fields["blocked"], fields["learned"], fields["next_goal"], fields["mood"], now(), old["id"]))
+            rid = old["id"]
+        else:
+            rid = rid or new_id()
+            c.execute("INSERT INTO weekly_reviews(id,week,done,blocked,learned,next_goal,mood,updated_at) VALUES(?,?,?,?,?,?,?,?)",
+                      (rid, week, fields["done"], fields["blocked"], fields["learned"], fields["next_goal"], fields["mood"], now()))
+        return dict(c.execute("SELECT * FROM weekly_reviews WHERE id=?", (rid,)).fetchone())
+
+
+def reviews_list() -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM weekly_reviews ORDER BY week")]
+
+
+def review_for_week(week: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM weekly_reviews WHERE week=?", (week,)).fetchone()
+    return dict(r) if r else None
+
+
+def journal_add(date: str, kind: str, text: str, paper_ids: list[str], card_ids: list[str], jid: str | None = None, created_at: float | None = None) -> dict:
+    jid = jid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO journal(id,date,kind,text,paper_ids,card_ids,created_at) VALUES(?,?,?,?,?,?,?)", (jid, date, kind, text, json.dumps(paper_ids), json.dumps(card_ids), created_at or now()))
+    return journal_get(jid)
+
+
+def _journal_row(r) -> dict:
+    d = dict(r)
+    d["paper_ids"], d["card_ids"] = json.loads(d["paper_ids"] or "[]"), json.loads(d["card_ids"] or "[]")
+    return d
+
+
+def journal_get(jid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM journal WHERE id=?", (jid,)).fetchone()
+    return _journal_row(r) if r else None
+
+
+def journal_list(kind: str | None = None) -> list[dict]:
+    with conn() as c:
+        rows = c.execute("SELECT * FROM journal WHERE kind=? ORDER BY date DESC, created_at DESC", (kind,)) if kind else c.execute("SELECT * FROM journal ORDER BY date DESC, created_at DESC")
+        return [_journal_row(r) for r in rows]
+
+
+def journal_update(jid: str, kind: str, text: str, paper_ids: list[str], card_ids: list[str]) -> None:
+    with conn() as c:
+        c.execute("UPDATE journal SET kind=?, text=?, paper_ids=?, card_ids=? WHERE id=?", (kind, text, json.dumps(paper_ids), json.dumps(card_ids), jid))
+
+
+def journal_delete(jid: str) -> None:
+    with conn() as c:
+        c.execute("DELETE FROM journal WHERE id=?", (jid,))

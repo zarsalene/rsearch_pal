@@ -223,6 +223,20 @@ You can switch each part off in **Settings → Features**: **Gap finder**, **Wri
 
 You can switch this feature off in **Settings → Features** (**Find papers**).
 
+## Plan: timeline, weekly review, journal, suggestions
+
+**Timeline** (Plan tab). Your PhD road as milestones with dates. Click **Make the milestones for my stage**, or add your own. Each milestone has a due date, a check box and weekly tasks.
+- **Suggest weekly tasks:** the AI proposes small tasks for each week before the due date. Each one has the label **AI suggestion**. You can change the text (the label goes away), check it, move it or delete it. Your own tasks always stay. A new suggestion replaces only the AI tasks that you did not touch.
+- A date that has passed only shows a kind note: change the date if your plan changed. There is no penalty.
+
+**Weekly review** (Plan tab, and on the Today page from Friday). Five short questions: what you did, what blocked you, what you learned, your goal for next week and how the week was (1 to 5). It takes about 5 minutes. You get **15 points** one time for each week. A second save in the same week updates the first one. The mood chart shows your weeks. Only you see it.
+
+**Research journal** (Plan tab). Write an **idea**, an **experiment**, a **decision** or a **result**. You can link papers. Each entry gives 3 points (at most 5 entries each day). **Decisions** fill the Method Workshop on the map. **Experiments and results** fill the Data Mines.
+
+**Suggest next papers** (To read tab). Once a day, the app looks at the references and the citations of your papers (OpenAlex). A paper that your papers cite, or that cites your papers, goes to the To read list with the tag **Suggested** and a reason, for example *Cited by 4 of your papers*. The score is 60% links to your library and 40% fit to your question. A paper that you have already, or that you called not useful, is not suggested again. Click **Suggest papers now** to look at once. Your papers need a DOI.
+
+You can switch each part off in **Settings → Features**: **Plan** and **Suggest next papers**.
+
 ## Citations and the literature review builder
 
 **Metadata.** On a card, the block **Metadata** shows the authors, the year, the venue and the DOI of the paper. Click **Fill from the PDF**.
@@ -379,7 +393,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **Gap finder**, **Writing coach**, **Quality check**, **Find papers**, **3D avatar** and **Duck Island**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **Gap finder**, **Writing coach**, **Quality check**, **Find papers**, **Plan**, **Suggest next papers**, **3D avatar** and **Duck Island**.
 
 ## Later (your list)
 
