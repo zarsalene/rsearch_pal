@@ -9,6 +9,7 @@ REGISTRY: dict[str, dict] = {
     "chat": {"label": "Chat", "description": "Ask questions about your papers. Each answer shows its quotes.", "default": True},
     "simple": {"label": "Simple mode", "description": "A switch in the top bar. In Simple mode, the AI texts have shorter sentences and explain the hard terms.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
+    "tts": {"label": "Listen (voice)", "description": "A Listen button reads the AI texts aloud. The server makes the voice with a small model, no AI provider.", "default": True},
 }
 
 

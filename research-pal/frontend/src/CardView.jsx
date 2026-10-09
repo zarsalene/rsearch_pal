@@ -3,6 +3,7 @@ import { api, cardApi } from "./api.js";
 import { Icon } from "./icons.jsx";
 import MindMap from "./MindMap.jsx";
 import SimpleText from "./SimpleText.jsx";
+import ListenButton, { PaperReader } from "./ListenButton.jsx";
 
 const ORDER = [
   ["question", "My question"],
@@ -83,8 +84,16 @@ function Summary({ card, paperId, cardId }) {
   const ok = items.filter((i) => i.s === "verified").length;
   const look = items.filter((i) => ["check", "unverified", "not_found"].includes(i.s)).length;
   if (!card.verdict && !items.length) return null;
+  // The text that the voice reads: the verdict, then the AI answer of each claim that has text.
+  const spoken = [
+    card.verdict && `Verdict: ${VERDICT[card.verdict]}. ${card.verdict_reason || ""}`,
+    ...items.filter((i) => !["not_stated", "not_found"].includes(i.s) && card.fields[i.k].answer).map((i) => `${i.label}. ${card.fields[i.k].answer}`),
+  ].filter(Boolean).join(" ");
   return (
     <section className="summary" aria-label="Summary">
+      <div className="simplebar">
+        <ListenButton text={spoken} label="Listen to the summary" />
+      </div>
       {card.verdict && (
         <div className={"verdict-panel v-" + card.verdict}>
           <span className="eyebrow">Verdict</span>
@@ -465,6 +474,7 @@ export default function CardView({ id, onChanged, onDeleted, notify }) {
           {paper.n_pages > 0 && <span>{paper.n_pages} pages</span>}
           {card?.model && <span>{card.model}</span>}
         </div>
+        <PaperReader paperId={id} nPages={paper.n_pages} />
         {card?.keywords?.length > 0 && (
           <div className="kw">
             {card.keywords.map((k) => (

@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, files, links, llm, mindmap, pdf, ste, vectors, words
+from . import auth, cards, chat, config, db, features, files, links, llm, mindmap, pdf, ste, tts, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -619,6 +619,31 @@ def simplify_text(body: SimplifyTextIn):
     if len(text) > 3000:
         raise HTTPException(400, "The text is longer than 3000 characters.")
     return run_simplify(text)
+
+
+# ---------- listen (text to speech) ----------
+class TTSIn(BaseModel):
+    text: str
+
+
+@app.post("/api/tts", dependencies=[Depends(auth.require_auth), Depends(features.require("tts"))])
+def speak(body: TTSIn):
+    """The voice of a short text, as a WAV file. The model is small and runs on the server CPU."""
+    try:
+        audio = tts.speak(body.text)
+    except tts.TTSError as e:
+        raise HTTPException(503 if "voice" in str(e).lower() else 400, str(e))
+    return Response(audio, media_type="audio/wav", headers={"Cache-Control": "private, max-age=3600"})
+
+
+@app.get("/api/papers/{pid}/read/{n}", dependencies=[Depends(auth.require_auth), Depends(features.require("tts"))])
+def read_page(pid: str, n: int):
+    """The text of one PDF page, in short passages for the voice. The page asks the voice for one passage at a time."""
+    must_get(pid)
+    pages = db.get_pages(pid)
+    if not 1 <= n <= len(pages):
+        raise HTTPException(404, "Page not found.")
+    return {"page": n, "n_pages": len(pages), "passages": tts.passages(pages[n - 1])}
 
 
 # ---------- word helper and glossary ----------

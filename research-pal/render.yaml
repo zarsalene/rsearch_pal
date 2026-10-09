@@ -8,7 +8,7 @@ services:
     runtime: python
     plan: free
     rootDir: research-pal/backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python scripts/get_voice.py
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
@@ -27,5 +27,8 @@ services:
         value: groq
       - key: GEMINI_API_KEY
         sync: false
+      # Listen button: the Piper voice (about 60 MB) is downloaded at build time. It runs on the CPU, about 150 MB of memory.
+      - key: TTS_DIR
+        value: /opt/render/project/src/research-pal/backend/voices
       - key: GROQ_API_KEY
         sync: false

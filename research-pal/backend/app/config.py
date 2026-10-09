@@ -99,6 +99,11 @@ GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
 GEMINI_EMBED_DIM = int(os.getenv("GEMINI_EMBED_DIM", "768"))
 LINK_THRESHOLD = float(os.getenv("LINK_THRESHOLD", "0.40"))
 
+# Text to speech (Piper). The voice file is downloaded one time into TTS_DIR. Voices: https://huggingface.co/rhasspy/piper-voices
+TTS_VOICE = os.getenv("TTS_VOICE", "en_US-lessac-low")
+TTS_VOICE_URL = os.getenv("TTS_VOICE_URL", "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/low").rstrip("/")
+TTS_DIR = Path(os.getenv("TTS_DIR", str(DATA_DIR / "tts")))
+
 
 def check_required() -> None:
     """Stop at start-up if a security setting is missing. The app must never run without a password."""

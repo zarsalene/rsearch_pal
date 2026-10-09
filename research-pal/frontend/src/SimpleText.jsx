@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ListenButton from "./ListenButton.jsx";
 import { useLevel } from "./level.js";
 
 // The simple versions that the page already has. The server also saves them, so a second request costs no AI call.
@@ -36,7 +37,13 @@ export default function SimpleText({ text, load, cacheKey, className = "answer" 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simple, key]);
 
-  if (!simple) return <p className={className}>{text}</p>;
+  if (!simple)
+    return (
+      <>
+        <p className={className}>{text}</p>
+        {text && <ListenButton text={text} />}
+      </>
+    );
   const mine = state.key === key;
   const data = mine ? state.data : null;
 
@@ -51,6 +58,7 @@ export default function SimpleText({ text, load, cacheKey, className = "answer" 
           <button className="link" onClick={() => setOriginal(!original)}>
             {original ? "Show the simple version" : "Show the original"}
           </button>
+          <ListenButton text={original ? text : data.text} />
         </div>
       </>
     );

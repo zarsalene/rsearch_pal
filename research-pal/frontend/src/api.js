@@ -129,6 +129,7 @@ export const api = {
   clearCache: () => request("/api/cache", { method: "DELETE" }),
   // Simple mode: the simple version of a text of the card (the server reads the text itself) or of any text of the AI.
   simplifyField: (id, field, cardId = "") => request(`/api/papers/${id}/simplify`, { method: "POST", json: { field, card_id: cardId || "" } }),
+  readPage: (id, n) => request(`/api/papers/${id}/read/${n}`),
   simplifyText: (text) => request("/api/simplify", { method: "POST", json: { text } }),
   // Word helper and glossary. The server makes the explanation. The page sends only the word and the paper.
   define: (id, term) => request(`/api/papers/${id}/define`, { method: "POST", json: { term } }),
