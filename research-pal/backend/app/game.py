@@ -22,12 +22,50 @@ XP = {
     "battle_answer": 5,     # a right answer in a boss battle (+3 for a combo hit)
     "boss_defeated": 30,    # the first win against the boss of a paper
     "boss_flawless": 15,    # the first win without the loss of a heart
+    "quest_done": 20,       # a weekly quest that real work completed
+    "comeback": 15,         # the first work after 4 days or more without work. A kind push, not a punishment.
 }
 LABELS = {
     "card_ready": "Card ready", "extra_card": "Extra card ready", "word_saved": "Word saved", "note_added": "Note saved",
     "link_explained": "Link explained", "eureka": "Eureka! A lucky find", "battle_answer": "Right answer",
-    "boss_defeated": "Boss defeated", "boss_flawless": "Flawless win",
+    "boss_defeated": "Boss defeated", "boss_flawless": "Flawless win", "quest_done": "Quest done", "comeback": "Welcome back",
 }
+COMEBACK_GAP = 4  # days since the last work day
+
+# The weekly quests: the session loop. The server picks 3 of these for each week. Only real work completes a quest.
+# have = the number of events of this action in this week (UTC), so the server can check each quest.
+QUEST_POOL = [
+    {"code": "boss", "title": "Defeat a boss", "action": "boss_defeated", "need": 1},
+    {"code": "answers", "title": "Give 8 right answers in boss fights", "action": "battle_answer", "need": 8},
+    {"code": "link", "title": "Explain a link between two papers", "action": "link_explained", "need": 1},
+    {"code": "words", "title": "Save 3 words in your glossary", "action": "word_saved", "need": 3},
+    {"code": "card", "title": "Read a new paper", "action": "card_ready", "need": 1},
+    {"code": "notes", "title": "Save 2 chat answers as notes", "action": "note_added", "need": 2},
+]
+QUESTS_PER_WEEK = 3
+
+# The shop: the economy. Sparks come from real work (1 Spark for each XP). The student spends them here.
+# Cosmetics are kept for ever. A boost is used one time, in the simulation.
+SHOP = {
+    "cap": {"label": "Student cap", "cost": 40, "kind": "cosmetic", "slot": "head"},
+    "glasses": {"label": "Reading glasses", "cost": 60, "kind": "cosmetic", "slot": "eyes"},
+    "scarf": {"label": "Cozy scarf", "cost": 80, "kind": "cosmetic", "slot": "neck"},
+    "labcoat": {"label": "Lab coat", "cost": 120, "kind": "cosmetic", "slot": "body"},
+    "mortarboard": {"label": "Mortarboard", "cost": 200, "kind": "cosmetic", "slot": "head", "level": 2},
+    "crown": {"label": "Golden crown", "cost": 400, "kind": "cosmetic", "slot": "head", "level": 4},
+    "coffee": {"label": "Coffee", "cost": 20, "kind": "boost", "text": "In the simulation: +25 energy. One time."},
+    "second_chance": {"label": "Second chance", "cost": 35, "kind": "boost", "text": "In the simulation: roll again after a failed roll. One time."},
+}
+SLOTS = ("head", "eyes", "neck", "body")
+
+STORY = [  # one line for each level
+    "You enter the Literature Forest. Each checked quote is a lantern.",
+    "The paths are clearer now. You read with proof.",
+    "You ask hard questions. The bosses know your name.",
+    "You see links between papers that others miss.",
+    "Your ideas stand on solid ground. It is time to write.",
+    "You reached the Defense Castle. The gate is open.",
+]
 DAILY_CAP = {"word_saved": 5, "note_added": 3}  # most events of one action in one day. A real habit counts. A flood of clicks does not.
 LUCKY = 4  # 1 in LUCKY explained links is a Eureka
 
@@ -214,7 +252,120 @@ def settle(items: list[dict] | None = None) -> dict:
             have.add((action, ref))
             per_day[(action, _day(when))] += 1
             new.append({"action": action, "label": LABELS[action], "xp": XP[action], "ref_id": ref})
+    new += _extras()
     return {"new": new, **_reward_since(before)}
+
+
+def _extras() -> list[dict]:
+    """The bonuses that follow real work: a weekly quest that is done, and a kind push after a long pause. Safe to call many times."""
+    ev, now = db.xp_list(), time.time()
+    today, new = _day(now), []
+
+    def pay(action: str, ref: str) -> None:
+        if db.xp_add(action, ref, XP[action], now):
+            new.append({"action": action, "label": LABELS[action], "xp": XP[action], "ref_id": ref})
+
+    work_days = sorted({_day(e["time"]) for e in ev if e["action"] not in ("comeback", "quest_done")})
+    earlier = [d for d in work_days if d < today]
+    if today in work_days and earlier and today - earlier[-1] >= COMEBACK_GAP:
+        pay("comeback", f"d{today}")  # the first work after a pause: the student is welcome, and the game says so
+    for qu in quests(ev, today):
+        if qu["done"]:
+            pay("quest_done", f"{_week(today)}:{qu['code']}")
+    return new
+
+
+def quests(events: list[dict], today: int) -> list[dict]:
+    """The 3 quests of this week, and how far each one is. The pick depends only on the week number, so it is the same on each call."""
+    week = _week(today)
+    pick = random.Random(week).sample(range(len(QUEST_POOL)), QUESTS_PER_WEEK)
+    out = []
+    for i in sorted(pick):
+        qu = QUEST_POOL[i]
+        have = sum(1 for e in events if e["action"] == qu["action"] and _week(_day(e["time"])) == week)
+        out.append({"code": qu["code"], "title": qu["title"], "need": qu["need"], "have": min(have, qu["need"]), "done": have >= qu["need"], "xp": XP["quest_done"]})
+    return out
+
+
+# ---------- the shop ----------
+def sparks() -> int:
+    """The Sparks that the student can spend: 1 for each XP, less what the student spent."""
+    return sum(e["xp"] for e in db.xp_list()) - sum(p["cost"] for p in db.purchase_list())
+
+
+def inventory() -> dict:
+    """What the student owns: the cosmetics, and the number of each boost that is not used yet."""
+    owned, boosts = set(), Counter()
+    for p in db.purchase_list():
+        item = p["item"]
+        if item.startswith("use:"):  # a boost that the student used in the simulation
+            boosts[item[4:]] -= 1
+        elif item in SHOP:
+            if SHOP[item]["kind"] == "cosmetic":
+                owned.add(item)
+            else:
+                boosts[item] += 1
+    return {"owned": sorted(owned), "boosts": {k: max(0, v) for k, v in boosts.items() if k in SHOP}}
+
+
+def use_boost(item: str) -> None:
+    """Use one boost. The simulation calls this. Without a boost in the inventory it is refused."""
+    with _lock:
+        if inventory()["boosts"].get(item, 0) < 1:
+            raise GameError("You do not have this boost. Buy it in the shop.", 409)
+        db.purchase_add(f"use:{item}", 0)
+
+
+def shop_view(level: int, balance: int, inv: dict) -> list[dict]:
+    out = []
+    for key, it in SHOP.items():
+        need = it.get("level", 0)
+        out.append({"id": key, "label": it["label"], "cost": it["cost"], "kind": it["kind"], "slot": it.get("slot", ""), "text": it.get("text", ""),
+                    "owned": key in inv["owned"], "count": inv["boosts"].get(key, 0), "locked": level < need, "level_name": LEVELS[need][0] if need else "",
+                    "can_buy": level >= need and balance >= it["cost"] and key not in inv["owned"]})
+    return out
+
+
+def buy(item: str) -> dict:
+    """The student buys one thing. The server checks the price, the level and the Sparks. The page cannot set a price."""
+    with _lock:
+        it = SHOP.get(item)
+        if not it:
+            raise GameError("This item does not exist.", 404)
+        snap, inv = snapshot(), inventory()
+        if it["kind"] == "cosmetic" and item in inv["owned"]:
+            raise GameError("You have this item already.", 409)
+        if snap["level"] < it.get("level", 0):
+            raise GameError(f"This item needs the level {LEVELS[it['level']][0]}.", 403)
+        if sparks() < it["cost"]:
+            raise GameError("You do not have enough Sparks. Real work gives Sparks.", 402)
+        db.purchase_add(item, it["cost"])
+        return {"item": item, "sparks": sparks()}
+
+
+def outfit() -> dict:
+    try:
+        saved = json.loads(db.get_setting("duck_outfit", "{}") or "{}")
+    except ValueError:
+        saved = {}
+    owned = set(inventory()["owned"])
+    return {s: saved[s] for s in SLOTS if isinstance(saved.get(s), str) and saved[s] in owned and SHOP[saved[s]].get("slot") == s}
+
+
+def set_outfit(wanted: dict) -> dict:
+    """Put on what the student owns. One item for each slot. An empty value takes the item off."""
+    owned = set(inventory()["owned"])
+    out = {}
+    for slot, item in (wanted or {}).items():
+        if slot not in SLOTS:
+            raise GameError("Unknown slot.", 400)
+        if not item:
+            continue
+        if item not in owned or SHOP[item].get("slot") != slot:
+            raise GameError("You do not own this item, or it does not fit here.", 403)
+        out[slot] = item
+    db.set_setting("duck_outfit", json.dumps(out))
+    return out
 
 
 def _reward_since(before: dict) -> dict:
@@ -257,8 +408,16 @@ def profile(tz: int = 0) -> dict:
     for e in ev:
         week[_week(_day(e["time"], tz))] += e["xp"]
     coll = collection(items)
+    inv = inventory()
+    balance = sparks()
     return {
         "xp": xp,
+        "sparks": balance,
+        "shop": shop_view(idx, balance, inv),
+        "inventory": inv,
+        "outfit": outfit(),
+        "quests": quests(ev, _day(time.time())),
+        "story": STORY[idx],
         "level": {"index": idx, "name": LEVELS[idx][0], "count": len(LEVELS), "xp_from": LEVELS[idx][1],
                   "xp_to": LEVELS[idx + 1][1] if idx + 1 < len(LEVELS) else None},
         "next": _next_level(xp, snap["skills"], idx),
@@ -531,7 +690,8 @@ def _answer(bid: str, n: int, choice: int) -> dict:
         status = "lost"
     d["xp"] += earned
     db.battle_update(bid, status, d)
-    return {"correct": right, "answer": q["answer"], "damage": damage, "crit": crit, "xp": earned,
+    extra = _extras()  # a quest that this answer completed, or a welcome back
+    return {"correct": right, "answer": q["answer"], "damage": damage, "crit": crit, "xp": earned, "extra": extra,
             "proof": {"quote": q["quote"], "page": q["page"], "verified": True}, "battle": _public(db.battle_get(bid)), **_reward_since(before)}
 
 

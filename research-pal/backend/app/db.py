@@ -17,7 +17,7 @@ if config.USE_PG:
     import psycopg2, psycopg2.extras, psycopg2.pool
     INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg2.IntegrityError)
 
-TABLES = ("papers", "pages", "cards", "extra_cards", "features", "glossary", "ai_log", "llm_cache", "settings", "xp_events", "battles")
+TABLES = ("papers", "pages", "cards", "extra_cards", "features", "glossary", "ai_log", "llm_cache", "settings", "xp_events", "battles", "purchases", "sim_runs")
 
 SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS papers(
@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS xp_events(
   id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT, ref_id TEXT, xp INTEGER, time REAL, user_id TEXT NOT NULL DEFAULT 'local', UNIQUE(user_id, action, ref_id));
 CREATE TABLE IF NOT EXISTS battles(
   id TEXT PRIMARY KEY, paper_id TEXT, status TEXT, data TEXT, created_at REAL, updated_at REAL, user_id TEXT NOT NULL DEFAULT 'local');
+CREATE TABLE IF NOT EXISTS purchases(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT, cost INTEGER, time REAL, user_id TEXT NOT NULL DEFAULT 'local');
+CREATE TABLE IF NOT EXISTS sim_runs(
+  id TEXT PRIMARY KEY, status TEXT, data TEXT, created_at REAL, updated_at REAL, user_id TEXT NOT NULL DEFAULT 'local');
 """
 
 
@@ -424,6 +428,51 @@ def battle_list(pid: str | None = None, status: str | None = None) -> list[dict]
     with conn() as c:
         rows = c.execute(sql + " ORDER BY created_at", args).fetchall()
     return [_battle_row(r) for r in rows]
+
+
+# ---------- game: the shop (a row for each thing that the student bought or used) and the semester simulator ----------
+def purchase_add(item: str, cost: int) -> None:
+    with conn() as c:
+        c.execute("INSERT INTO purchases(user_id,item,cost,time) VALUES(?,?,?,?)", (_uid(), item, int(cost), time.time()))
+
+
+def purchase_list() -> list[dict]:
+    with conn() as c:
+        rows = c.execute("SELECT item, cost, time FROM purchases WHERE user_id=? ORDER BY id", (_uid(),)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def sim_add(sid: str, data: dict, status: str = "active") -> None:
+    now = time.time()
+    with conn() as c:
+        c.execute("INSERT INTO sim_runs(id,user_id,status,data,created_at,updated_at) VALUES(?,?,?,?,?,?)", (sid, _uid(), status, json.dumps(data, ensure_ascii=False), now, now))
+
+
+def _sim_row(r) -> dict:
+    d = dict(r)
+    d["data"] = _j(d["data"]) or {}
+    d.pop("user_id", None)
+    return d
+
+
+def sim_get(sid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM sim_runs WHERE id=? AND user_id=?", (sid, _uid())).fetchone()
+    return _sim_row(r) if r else None
+
+
+def sim_update(sid: str, status: str, data: dict) -> None:
+    with conn() as c:
+        c.execute("UPDATE sim_runs SET status=?, data=?, updated_at=? WHERE id=? AND user_id=?", (status, json.dumps(data, ensure_ascii=False), time.time(), sid, _uid()))
+
+
+def sim_list(status: str | None = None) -> list[dict]:
+    sql, args = "SELECT * FROM sim_runs WHERE user_id=?", [_uid()]
+    if status:
+        sql, args = sql + " AND status=?", args + [status]
+    with conn() as c:
+        rows = c.execute(sql + " ORDER BY created_at", args).fetchall()
+    return [_sim_row(r) for r in rows]
 
 
 # ---------- settings ----------

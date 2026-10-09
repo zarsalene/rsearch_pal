@@ -97,6 +97,21 @@ create table if not exists battles (
   created_at double precision, updated_at double precision
 );
 
+create table if not exists purchases (
+  id       bigint generated always as identity primary key,
+  user_id  uuid not null references auth.users(id) on delete cascade,
+  item     text not null, cost integer not null,
+  time     double precision
+);
+
+create table if not exists sim_runs (
+  id         text primary key,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  status     text,
+  data       jsonb,
+  created_at double precision, updated_at double precision
+);
+
 -- ---------- vectors (768 values = Gemini embedding, GEMINI_EMBED_DIM) ----------
 create table if not exists chunks (
   id        text primary key,                      -- "<paper_id>:<chunk id>"
@@ -138,7 +153,7 @@ create index if not exists battles_paper_idx on battles(user_id, paper_id);
 do $$
 declare t text;
 begin
-  foreach t in array array['papers','pages','cards','extra_cards','glossary','ai_log','features','settings','llm_cache','xp_events','battles','chunks','card_vectors']
+  foreach t in array array['papers','pages','cards','extra_cards','glossary','ai_log','features','settings','llm_cache','xp_events','battles','purchases','sim_runs','chunks','card_vectors']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists own_rows on %I', t);

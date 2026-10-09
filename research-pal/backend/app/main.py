@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, files, game, links, llm, mindmap, pdf, ste, tts, vectors, words
+from . import auth, cards, chat, config, db, features, files, game, links, llm, mindmap, pdf, sim, ste, tts, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -705,7 +705,7 @@ def delete_glossary(gid: str):
 def play(fn, *args):
     try:
         return fn(*args)
-    except game.GameError as e:
+    except (game.GameError, sim.SimError) as e:
         raise HTTPException(e.status, str(e))
     except llm.LLMError as e:
         raise HTTPException(502, str(e))
@@ -762,6 +762,73 @@ class AnswerIn(BaseModel):
 def answer_battle(bid: str, body: AnswerIn):
     """The page sends the number of the question and the answer that the student chose. The server decides if it is right."""
     return play(game.answer, bid, body.n, body.choice)
+
+
+@app.post("/api/game/shop/{item}", dependencies=GAME)
+def shop_buy(item: str):
+    """Buy one item with Sparks. The server knows the price. The page cannot change it."""
+    return play(game.buy, item)
+
+
+class OutfitIn(BaseModel):
+    outfit: dict[str, str]
+
+
+@app.put("/api/game/outfit", dependencies=GAME)
+def put_outfit(body: OutfitIn):
+    """Put owned items on the Duck. One item for each slot (head, eyes, neck, body)."""
+    return {"outfit": play(game.set_outfit, body.outfit)}
+
+
+# ---------- the Semester Simulator ----------
+# A turn-based simulation on the server. The page sends choices. The random numbers and the rules stay here (see sim.py).
+@app.get("/api/sim", dependencies=GAME)
+def sim_current():
+    return play(sim.current)
+
+
+@app.post("/api/sim", dependencies=GAME)
+def sim_start():
+    """A new semester, from the real work of the student. An open semester is closed without a penalty."""
+    return play(sim.start)
+
+
+@app.get("/api/sim/{sid}", dependencies=GAME)
+def sim_get(sid: str):
+    return play(sim.get, sid)
+
+
+class SimActIn(BaseModel):
+    action: str
+    arg: str = ""
+
+
+@app.post("/api/sim/{sid}/act", dependencies=GAME)
+def sim_act(sid: str, body: SimActIn):
+    return play(sim.do, sid, body.action, body.arg)
+
+
+class SimBoostIn(BaseModel):
+    item: str
+
+
+@app.post("/api/sim/{sid}/boost", dependencies=GAME)
+def sim_boost(sid: str, body: SimBoostIn):
+    return play(sim.boost, sid, body.item)
+
+
+class SimChooseIn(BaseModel):
+    choice: str
+
+
+@app.post("/api/sim/{sid}/choose", dependencies=GAME)
+def sim_choose(sid: str, body: SimChooseIn):
+    return play(sim.answer_event, sid, body.choice)
+
+
+@app.post("/api/sim/{sid}/end-week", dependencies=GAME)
+def sim_end_week(sid: str):
+    return play(sim.next_week, sid)
 
 
 # ---------- AI use log ----------
