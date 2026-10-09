@@ -32,3 +32,10 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      # Multi-user mode (optional). See README.md, "Many users and a database that stays (Supabase)".
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false

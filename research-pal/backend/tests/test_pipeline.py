@@ -1,13 +1,14 @@
 """End-to-end test with a fake AI. It checks: PDF reading, quote checks, hiding of false claims, search, links, export and import."""
 import time
 
-from app import cards as cards_mod, chat as chat_mod, db as db_mod, pdf as pdf_mod
+from app import cards as cards_mod, chat as chat_mod, config, db as db_mod, pdf as pdf_mod
 from helpers import login, upload, wait_ready
 
 
 def test_all(client, fake_ai, sample_pdfs):
     assert client.get("/api/papers").status_code == 401
-    assert client.post("/api/login", json={"password": "wrong"}).status_code == 401
+    if not config.MULTI_USER:  # in multi-user mode the password login is off (see test_settings.py)
+        assert client.post("/api/login", json={"password": "wrong"}).status_code == 401
     h = login(client)
     assert client.get("/api/config", headers=h).json()["llm_ready"] is True
     assert client.put("/api/settings", headers=h, json={"thesis_question": "Do validation agents reduce false hypotheses?"}).status_code == 200

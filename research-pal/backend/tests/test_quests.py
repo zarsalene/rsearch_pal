@@ -126,8 +126,8 @@ def test_each_condition_counts_the_work_of_this_week(client):
     assert prog("wins_3") == (2, 3)
     db.init()
     with db.conn() as c:
-        c.execute("INSERT INTO focus_sessions(id,start,end,minutes,task_text,date,planned) VALUES('f1',1,2,70,'x','2026-10-06',25)")
-        c.execute("INSERT INTO focus_sessions(id,start,end,minutes,task_text,date,planned) VALUES('f2',1,2,60,'x','2026-10-01',25)")  # last week
+        c.execute("INSERT INTO focus_sessions(id,start,\"end\",minutes,task_text,date,planned) VALUES('f1',1,2,70,'x','2026-10-06',25)")
+        c.execute("INSERT INTO focus_sessions(id,start,\"end\",minutes,task_text,date,planned) VALUES('f2',1,2,60,'x','2026-10-01',25)")  # last week
     assert prog("focus_120") == (70, 120)
     for i in range(3):
         db.glossary_add(f"term{i}", "An explanation.", "ai", "p1", 0, None, NOON)
@@ -185,7 +185,7 @@ def test_a_quest_that_is_done_gives_points_one_time_and_a_date(client, auth_head
             db.glossary_add(f"t{i}", "An explanation.", "ai", "p1", 0, None, NOON)
     elif easy == "focus_120":
         with db.conn() as c:
-            c.execute("INSERT INTO focus_sessions(id,start,end,minutes,task_text,date,planned) VALUES('f1',1,2,130,'x','2026-10-06',25)")
+            c.execute("INSERT INTO focus_sessions(id,start,\"end\",minutes,task_text,date,planned) VALUES('f1',1,2,130,'x','2026-10-06',25)")
     else:
         for t in "abc":
             db.add_sub_question(f"Sub question {t}?")

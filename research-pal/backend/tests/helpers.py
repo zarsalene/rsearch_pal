@@ -5,6 +5,9 @@ from app import cards
 
 
 def login(client, password="test-password-123") -> dict:
+    from app import config
+    if config.MULTI_USER:  # Postgres test run: conftest.py makes every token belong to the user of the test
+        return {"Authorization": "Bearer test"}
     token = client.post("/api/login", json={"password": password}).json()["token"]
     return {"Authorization": "Bearer " + token}
 

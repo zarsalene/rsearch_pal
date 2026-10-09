@@ -21,8 +21,11 @@ def clean(t: str) -> str:
 
 
 def extract_pages(path) -> tuple[list[str], str]:
+    """path: a file path, or a file in memory. None means that there is no file."""
+    if path is None:
+        raise PdfError("The PDF file is not on the server. Upload the paper again.")
     try:
-        reader = PdfReader(str(path))
+        reader = PdfReader(path if hasattr(path, "read") else str(path))
         if reader.is_encrypted:
             if not reader.decrypt(""):
                 raise PdfError("This PDF is protected by a password.")

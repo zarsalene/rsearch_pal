@@ -12,6 +12,13 @@ PDF_DIR = DATA_DIR / "pdfs"
 CHROMA_DIR = DATA_DIR / "chroma"
 DB_PATH = DATA_DIR / "research_pal.sqlite3"
 
+# Supabase (multi-user mode). When SUPABASE_URL is empty, the app is in one-user mode: password login and SQLite.
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+ALLOWED_EMAILS = {e.strip().lower() for e in os.getenv("ALLOWED_EMAILS", "").split(",") if e.strip()}  # empty = everybody can sign up
+MULTI_USER = bool(SUPABASE_URL)
+USE_PG = MULTI_USER and bool(DATABASE_URL)  # Postgres on Supabase. Without it: SQLite
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 FRONTEND_ORIGINS = [o.strip().rstrip("/") for o in os.getenv("FRONTEND_ORIGIN", "http://localhost:5173").split(",") if o.strip()]
@@ -93,7 +100,14 @@ LINK_THRESHOLD = float(os.getenv("LINK_THRESHOLD", "0.40"))
 def check_required() -> None:
     """Stop at start-up if a security setting is missing. The app must never run without a password."""
     problems = []
-    if len(APP_PASSWORD) < 8:
+    if MULTI_USER:
+        if not SUPABASE_SERVICE_KEY:
+            problems.append("SUPABASE_SERVICE_KEY is missing.")
+        if not DATABASE_URL:
+            problems.append("DATABASE_URL is missing.")
+        if EMBEDDING_BACKEND != "gemini":
+            problems.append("In multi-user mode, set EMBEDDING_BACKEND=gemini (the vector tables have 768 values).")
+    elif len(APP_PASSWORD) < 8:
         problems.append("APP_PASSWORD must have at least 8 characters.")
     if len(SECRET_KEY) < 24:
         problems.append("SECRET_KEY must have at least 24 characters.")

@@ -103,6 +103,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .login-card .tag{color:var(--muted);margin:0 0 14px}
 .login-card .panel{background:var(--surface);border:var(--edge);border-radius:var(--r-lg);box-shadow:var(--shadow-md);padding:22px;display:flex;flex-direction:column;gap:12px;text-align:left}
 .login-card .btn{padding:11px 18px}
+.login-switch{background:none;border:0;color:var(--accent);font:inherit;font-size:.85rem;cursor:pointer;padding:6px;text-decoration:underline;text-underline-offset:3px}
 .login-card .note{font-size:.8rem;color:var(--muted);text-align:center;margin:4px 0 0;display:flex;gap:6px;align-items:center;justify-content:center}
 .field-label{font-weight:600;font-size:.85rem}
 

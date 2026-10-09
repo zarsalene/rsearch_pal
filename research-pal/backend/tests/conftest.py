@@ -1,6 +1,8 @@
 """Shared fixtures. Each test gets its own empty data folder, its own search index and a fake AI.
 No test calls a real AI or the network."""
+import io
 import os
+import re
 import tempfile
 import uuid
 from types import SimpleNamespace
@@ -14,10 +16,36 @@ os.environ.update(
     LLM_COOLDOWN="60", LLM_CONTEXT_CHARS="90000", LLM_MIN_CONTEXT_CHARS="20000", CHAT_CONTEXT_CHARS="24000",
     LLM_MAX_TOKENS="8000", LLM_REASONING_EFFORT="medium", LINK_THRESHOLD="0.40", MIN_TEXT_CHARS="200",
     FRONTEND_ORIGIN="http://localhost:5173",
+    SUPABASE_URL="", SUPABASE_SERVICE_KEY="", DATABASE_URL="", ALLOWED_EMAILS="",  # one-user mode, whatever is in .env
 )
+# RP_TEST_PG=1 runs the same tests on Postgres (Supabase). Set RP_PG_URL, RP_PG_SERVICE_KEY and RP_PG_DATABASE_URL. See tests/run_pg.py.
+PG_MODE = os.environ.get("RP_TEST_PG") == "1"
+if PG_MODE:
+    os.environ.update(SUPABASE_URL=os.environ["RP_PG_URL"], SUPABASE_SERVICE_KEY=os.environ["RP_PG_SERVICE_KEY"],
+                      DATABASE_URL=os.environ["RP_PG_DATABASE_URL"], EMBEDDING_BACKEND="gemini")
 
 import pytest
 from fastapi.testclient import TestClient
+
+# Tests that cannot apply to Postgres (multi-user mode). They test the password login, an old SQLite file or ChromaDB.
+PG_SKIP = {
+    "test_features.py::test_an_old_database_keeps_its_rows": "an old SQLite file",
+    "test_direction.py::test_an_old_database_moves_its_question_into_the_project": "an old SQLite file",
+    "test_review.py::test_old_review_items_get_a_date": "an old SQLite file",
+    "test_understand.py::test_words_saved_before_this_sprint_get_a_review_item": "an old SQLite file",
+    "test_vectors_real.py": "ChromaDB (one-user mode)",
+    "test_settings.py::test_login": "password login is off in multi-user mode",
+    "test_settings.py::test_wrong_password_is_limited": "password login is off in multi-user mode",
+}
+
+
+def pytest_collection_modifyitems(config, items):
+    if not PG_MODE:
+        return
+    for item in items:
+        for key, why in PG_SKIP.items():
+            if item.nodeid.replace("\\", "/").endswith(key) or ("::" not in key and key in item.nodeid.replace("\\", "/")):
+                item.add_marker(pytest.mark.skip(reason="Postgres run: " + why))
 
 from app import auth, config, db, llm, main, vectors
 from fake_ai import FakeAI
@@ -41,12 +69,63 @@ def isolated(tmp_path, monkeypatch):
         monkeypatch.setattr(config, name, value)
     # A fake collection in memory. See tests/fake_vectors.py for the reason. The code of vectors.py still runs.
     monkeypatch.setattr(vectors, "_col", FakeIndex().col)
-    monkeypatch.setattr(llm, "_choice", None)
+    monkeypatch.setattr(llm, "_choices", {})
     monkeypatch.setattr(llm.httpx, "post", _no_network)
     llm._down_until.clear()
     auth._attempts.clear()
+    if PG_MODE:
+        yield from _pg_isolation(monkeypatch)
+        llm._down_until.clear()
+        return
     yield
     llm._down_until.clear()
+
+
+def _pg_isolation(monkeypatch):
+    """Postgres: each test is a new user, so it gets a new schema. The schema is dropped at the end.
+    The PDF files and the vectors of the embeddings are fakes in memory (the real ones are tested in the real Supabase test)."""
+    import hashlib
+    import math
+
+    from app import files
+
+    uid = str(uuid.uuid4())
+
+    async def who(token):
+        return uid
+    monkeypatch.setattr(auth, "_supabase_user", who)
+    auth.set_user(uid)
+
+    def fake_embed(texts, query=False):
+        out = []
+        for text in texts:
+            v = [0.0] * config.GEMINI_EMBED_DIM
+            for w in re.findall(r"[a-z0-9]+", text.lower()):
+                h = int(hashlib.md5(w.encode()).hexdigest(), 16)
+                v[h % len(v)] += 1.0 if (h >> 20) & 1 else -1.0
+                v[(h >> 8) % len(v)] += 0.5
+            n = math.sqrt(sum(x * x for x in v)) or 1.0
+            out.append([x / n for x in v])
+        return out
+    monkeypatch.setattr(vectors, "embed", fake_embed)
+
+    store = {}
+    monkeypatch.setattr(files, "save", lambda pid, data: store.__setitem__((uid, pid), data))
+    monkeypatch.setattr(files, "read", lambda pid: store.get((uid, pid)))
+    monkeypatch.setattr(files, "source", lambda pid: io.BytesIO(store[(uid, pid)]) if (uid, pid) in store else None)
+    monkeypatch.setattr(files, "exists", lambda pid: (uid, pid) in store)
+    monkeypatch.setattr(files, "ids", lambda: {p for (u, p) in store if u == uid})
+    monkeypatch.setattr(files, "delete", lambda pid: store.pop((uid, pid), None))
+    yield
+    schema = db._schema_name(uid)
+    pool = db._get_pool()
+    raw = pool.getconn()
+    try:
+        raw.cursor().execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+        raw.commit()
+    finally:
+        pool.putconn(raw)
+        db._ready.discard(schema)
 
 
 @pytest.fixture

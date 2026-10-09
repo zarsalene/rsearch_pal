@@ -1,106 +1,328 @@
-"""SQLite storage: papers, page texts and cards."""
-import json, sqlite3, threading, time, uuid
+"""Storage: papers, page texts, cards, the game, the project, settings.
+One-user mode and tests: SQLite.
+Multi-user mode (SUPABASE_URL + DATABASE_URL): Postgres on Supabase. Each user has a schema of his own ("u_<user id>") with all the tables.
+A user can only reach his own schema, so a query can never read the data of another user. The SQL below is the same for both."""
+import json, re, sqlite3, threading, time, uuid
 from contextlib import contextmanager
 
-from . import config
+from . import auth, config
 
-_lock = threading.Lock()
+_lock = threading.Lock()  # SQLite only: one writer at a time
+_ready: set[str] = set()  # SQLite files that have their tables, and Postgres schemas that have their tables
+_pool = None
+_pool_lock = threading.Lock()
+_prepare_lock = threading.Lock()
+_last_used: dict[int, float] = {}  # Postgres connection -> time of the last use
+
+INTEGRITY_ERRORS: tuple = (sqlite3.IntegrityError,)
+if config.USE_PG:
+    import psycopg2, psycopg2.extras, psycopg2.pool
+    INTEGRITY_ERRORS = (sqlite3.IntegrityError, psycopg2.IntegrityError)
+
+SQLITE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS papers(
+  id TEXT PRIMARY KEY, filename TEXT, title TEXT, status TEXT, error TEXT,
+  purpose TEXT, n_pages INTEGER DEFAULT 0, created_at REAL, updated_at REAL);
+CREATE TABLE IF NOT EXISTS pages(
+  paper_id TEXT, page INTEGER, text TEXT, PRIMARY KEY(paper_id, page));
+CREATE TABLE IF NOT EXISTS cards(
+  paper_id TEXT PRIMARY KEY, data TEXT, updated_at REAL);
+CREATE TABLE IF NOT EXISTS extra_cards(
+  id TEXT PRIMARY KEY, paper_id TEXT, focus TEXT, purpose TEXT, status TEXT, error TEXT,
+  data TEXT, created_at REAL, updated_at REAL);
+CREATE TABLE IF NOT EXISTS features(
+  name TEXT PRIMARY KEY, enabled INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS project(
+  id INTEGER PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL DEFAULT '', question TEXT NOT NULL DEFAULT '',
+  stage TEXT NOT NULL DEFAULT '', updated_at REAL);
+CREATE TABLE IF NOT EXISTS sub_questions(
+  id TEXT PRIMARY KEY, text TEXT NOT NULL, position INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS project_history(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, field TEXT NOT NULL, old_value TEXT, new_value TEXT, changed_at REAL);
+CREATE TABLE IF NOT EXISTS paper_tags(
+  paper_id TEXT NOT NULL, card_id TEXT NOT NULL DEFAULT '', sub_question_id TEXT NOT NULL,
+  PRIMARY KEY(paper_id, card_id, sub_question_id));
+CREATE TABLE IF NOT EXISTS glossary(
+  id TEXT PRIMARY KEY, term TEXT, explanation TEXT, source TEXT, paper_id TEXT, page INTEGER DEFAULT 0, created_at REAL);
+CREATE TABLE IF NOT EXISTS explanations(
+  id TEXT PRIMARY KEY, paper_id TEXT, card_id TEXT, text TEXT, result_json TEXT, score INTEGER, created_at REAL);
+CREATE TABLE IF NOT EXISTS review_items(
+  id TEXT PRIMARY KEY, kind TEXT, paper_id TEXT, question TEXT, answer TEXT, quote TEXT, page INTEGER DEFAULT 0, created_at REAL,
+  card_id TEXT DEFAULT '', ref_id TEXT DEFAULT '', last_mark TEXT DEFAULT '', tries INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS goals(
+  id TEXT PRIMARY KEY, date TEXT, text TEXT, kind TEXT, target INTEGER DEFAULT 0, done INTEGER DEFAULT 0, created_at REAL);
+CREATE TABLE IF NOT EXISTS wins(
+  id TEXT PRIMARY KEY, date TEXT, text TEXT, created_at REAL);
+CREATE TABLE IF NOT EXISTS focus_sessions(
+  id TEXT PRIMARY KEY, start REAL, "end" REAL, minutes INTEGER DEFAULT 0, task_text TEXT, paper_id TEXT DEFAULT '',
+  date TEXT, planned INTEGER DEFAULT 0, goal_id TEXT DEFAULT '');
+CREATE TABLE IF NOT EXISTS quests_active(
+  id TEXT PRIMARY KEY, code TEXT, week TEXT, chosen_at REAL, done_at REAL, UNIQUE(code, week));
+CREATE TABLE IF NOT EXISTS activity(
+  id TEXT PRIMARY KEY, time REAL, date TEXT, kind TEXT, ref_id TEXT);
+CREATE TABLE IF NOT EXISTS xp_events(
+  id TEXT PRIMARY KEY, time REAL, date TEXT, action TEXT, ref_id TEXT, xp INTEGER, UNIQUE(action, ref_id));
+CREATE TABLE IF NOT EXISTS badges(
+  id TEXT PRIMARY KEY, code TEXT UNIQUE, earned_at REAL);
+CREATE TABLE IF NOT EXISTS rewards(
+  id TEXT PRIMARY KEY, text TEXT, condition TEXT, earned_at REAL, claimed INTEGER DEFAULT 0, created_at REAL);
+CREATE TABLE IF NOT EXISTS ai_log(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, time REAL, feature TEXT, paper_id TEXT, provider TEXT, model TEXT);
+
+CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS llm_cache(key TEXT PRIMARY KEY, tag TEXT, provider TEXT, model TEXT, response TEXT, created_at REAL);
+
+"""
+
+# Columns that older SQLite databases get later (Postgres has them from the start, see PG_EXTRA).
+_REVIEW_COLUMNS = (("due", "REAL"), ("stability", "REAL"), ("difficulty", "REAL"), ("reps", "INTEGER DEFAULT 0"), ("lapses", "INTEGER DEFAULT 0"),
+                   ("last_review", "REAL"), ("fsrs_json", "TEXT"))
+_PAPER_COLUMNS = (("is_boss", "INTEGER DEFAULT 0"), ("boss_defeated_at", "REAL"), ("focus", "TEXT DEFAULT ''"))
+
+
+def _pg_ddl() -> str:
+    """The Postgres version of SQLITE_SCHEMA. REAL becomes DOUBLE PRECISION (a 4-byte REAL cannot keep a time stamp).
+    Each table also gets a "rowid" column, because the SQL orders by rowid. The rows hide it (see _Cur)."""
+    d = SQLITE_SCHEMA.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY")
+    d = re.sub(r"\bREAL\b", "DOUBLE PRECISION", d)
+    d = re.sub(r"CREATE TABLE IF NOT EXISTS (\w+)\(", r"CREATE TABLE IF NOT EXISTS \1(rowid BIGINT GENERATED ALWAYS AS IDENTITY, ", d)
+    extra = "".join(f"ALTER TABLE review_items ADD COLUMN IF NOT EXISTS {n} {t.replace('REAL', 'DOUBLE PRECISION')};\n" for n, t in _REVIEW_COLUMNS)
+    extra += "".join(f"ALTER TABLE papers ADD COLUMN IF NOT EXISTS {n} {t.replace('REAL', 'DOUBLE PRECISION')};\n" for n, t in _PAPER_COLUMNS)
+    extra += f"""
+CREATE TABLE IF NOT EXISTS chunks(id TEXT PRIMARY KEY, paper_id TEXT NOT NULL, page INTEGER, idx INTEGER, document TEXT, embedding vector({config.GEMINI_EMBED_DIM}));
+CREATE INDEX IF NOT EXISTS chunks_paper_idx ON chunks(paper_id);
+CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops);
+CREATE TABLE IF NOT EXISTS card_vectors(paper_id TEXT PRIMARY KEY, document TEXT, embedding vector({config.GEMINI_EMBED_DIM}));
+"""
+    return d + extra
+
+
+def _schema_name(uid: str) -> str:
+    """The Postgres schema of one user. The id is checked, so it can never carry SQL."""
+    h = str(uid).replace("-", "").lower()
+    if not re.fullmatch(r"[0-9a-f]{32}", h):
+        raise RuntimeError("Bad user id.")
+    return "u_" + h
+
+
+_MESSAGE = "Processing stopped (server restart). Click Retry."
+
+
+def _after_tables(c) -> None:
+    """Fixes that run when the tables are ready (SQLite: at start-up, Postgres: the first time a user is seen after a restart)."""
+    # The thesis has one row. An older database keeps its research question: it moves from the settings into the project one time.
+    if not c.execute("SELECT 1 FROM project WHERE id=1").fetchone():
+        old = c.execute("SELECT value FROM settings WHERE key='thesis_question'").fetchone()
+        c.execute("INSERT INTO project(id,title,question,stage,updated_at) VALUES(1,'',?,'',?)", ((old["value"] if old else "") or "", time.time()))
+    # A restart can stop a job in the middle. Mark such papers, so you can retry them.
+    c.execute("UPDATE extra_cards SET status='error', error=? WHERE status IN ('processing','queued')", (_MESSAGE,))
+    c.execute("UPDATE papers SET status='error', error=? WHERE status IN ('processing','queued')", (_MESSAGE,))
+
+
+def _sqlite_ready(c: sqlite3.Connection) -> None:
+    key = str(config.DB_PATH)
+    if key in _ready:
+        return
+    c.executescript(SQLITE_SCHEMA)
+    # Older databases miss some columns. Add them one time.
+    cols = {r["name"] for r in c.execute("PRAGMA table_info(review_items)")}
+    for name, typ in _REVIEW_COLUMNS:
+        if name not in cols:
+            c.execute(f"ALTER TABLE review_items ADD COLUMN {name} {typ}")
+    c.execute("UPDATE review_items SET due=created_at WHERE due IS NULL")
+    paper_cols = {r["name"] for r in c.execute("PRAGMA table_info(papers)")}
+    for name, typ in _PAPER_COLUMNS:
+        if name not in paper_cols:
+            c.execute(f"ALTER TABLE papers ADD COLUMN {name} {typ}")
+    _after_tables(c)
+    # A word in the glossary is also a review item (kind "glossary"). Words saved before Sprint 02 get their item now.
+    c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id,due) "
+              "SELECT id,'glossary',paper_id,term,explanation,CASE WHEN source='paper' THEN explanation ELSE '' END,page,created_at,id,created_at FROM glossary "
+              "WHERE id NOT IN (SELECT ref_id FROM review_items WHERE kind='glossary')")
+    _ready.add(key)
+
+
+class _Row(dict):
+    """A row that works like a dict, and also by number (row[0]), as a SQLite row does."""
+
+    def __getitem__(self, k):
+        return list(self.values())[k] if isinstance(k, int) else dict.__getitem__(self, k)
+
+
+class _Cur:
+    """A cursor that gives rows as dicts, without the helper column "rowid"."""
+
+    def __init__(self, cur):
+        self.cur = cur
+        self.rowcount = cur.rowcount
+
+    @staticmethod
+    def _clean(r):
+        if r is None:
+            return None
+        r = _Row(r)
+        r.pop("rowid", None)
+        return r
+
+    def fetchone(self):
+        return self._clean(self.cur.fetchone())
+
+    def fetchall(self):
+        return [self._clean(r) for r in self.cur.fetchall()]
+
+    def __iter__(self):
+        return iter(self.fetchall())
+
+
+class _PgConn:
+    """Gives Postgres the same small interface as SQLite: execute(sql, params) with ? marks, and rows that work like dicts."""
+
+    def __init__(self, raw, schema: str):
+        self.raw = raw
+        # extra_float_digits=3: Postgres gives a time stamp with all its digits. Without it, a value that comes back is a little different.
+        self.path = f'SET LOCAL search_path TO "{schema}", public, extensions; SET LOCAL extra_float_digits = 3'
+        self._set = False
+
+    @staticmethod
+    def _sql(sql: str) -> str:
+        sql = sql.strip().rstrip(";")
+        if re.match(r"INSERT OR IGNORE INTO", sql, re.I):
+            sql = re.sub(r"INSERT OR IGNORE INTO", "INSERT INTO", sql, count=1, flags=re.I) + " ON CONFLICT DO NOTHING"
+        sql = sql.replace("FROM sqlite_master WHERE type='table' AND name=", "FROM information_schema.tables WHERE table_schema=current_schema() AND table_name=")
+        return sql.replace("%", "%%").replace("?", "%s")
+
+    def _prefix(self) -> str:
+        if self._set:
+            return ""
+        self._set = True
+        return self.path + "; "
+
+    def execute(self, sql: str, params=()):
+        cur = self.raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(self._prefix() + self._sql(sql), tuple(params))
+        return _Cur(cur)
+
+    def executemany(self, sql: str, rows) -> None:
+        cur = self.raw.cursor()
+        pre = self._prefix()
+        if pre:
+            cur.execute(pre.rstrip("; "))
+        psycopg2.extras.execute_batch(cur, self._sql(sql), list(rows))
+
+
+def _get_pool():
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = psycopg2.pool.ThreadedConnectionPool(1, 8, config.DATABASE_URL, connect_timeout=15, keepalives=1, keepalives_idle=30)
+    return _pool
+
+
+def _checkout(pool):
+    raw = pool.getconn()
+    if raw.closed or time.time() - _last_used.get(id(raw), 0) > 30:  # a long-idle connection may be closed by the server
+        try:
+            raw.cursor().execute("SELECT 1")
+            raw.rollback()
+        except Exception:
+            pool.putconn(raw, close=True)
+            raw = pool.getconn()
+    return raw
+
+
+def _pg_prepare(pool, schema: str) -> None:
+    """Make the schema and the tables of one user, one time for each start of the server."""
+    with _prepare_lock:
+        if schema in _ready:
+            return
+        raw = _checkout(pool)
+        try:
+            cur = raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (schema,))
+            cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+            cur.execute(f'SET LOCAL search_path TO "{schema}", public, extensions; SET LOCAL extra_float_digits = 3')
+            cur.execute(_pg_ddl())
+            _after_tables(_PgConnPrepared(cur))
+            raw.commit()
+            _ready.add(schema)
+        except BaseException:
+            try:
+                raw.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            _last_used[id(raw)] = time.time()
+            pool.putconn(raw, close=bool(raw.closed))
+
+
+class _PgConnPrepared:
+    """The same interface on one open cursor (used when the tables are made)."""
+
+    def __init__(self, cur):
+        self.cur = cur
+
+    def execute(self, sql: str, params=()):
+        self.cur.execute(_PgConn._sql(sql), tuple(params))
+        return _Cur(self.cur)
 
 
 @contextmanager
 def conn():
+    if config.USE_PG:
+        schema = _schema_name(auth.current_user())
+        pool = _get_pool()
+        if schema not in _ready:
+            _pg_prepare(pool, schema)
+        raw = _checkout(pool)
+        try:
+            try:
+                yield _PgConn(raw, schema)
+                raw.commit()
+            except BaseException:
+                try:
+                    raw.rollback()
+                except Exception:
+                    pass
+                raise
+        finally:
+            _last_used[id(raw)] = time.time()
+            pool.putconn(raw, close=bool(raw.closed))
+        return
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(config.DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
     try:
         with _lock:
+            _sqlite_ready(c)
             yield c
             c.commit()
     finally:
         c.close()
 
 
+def ping() -> None:
+    """Postgres: one small query, so a free Supabase project is not paused for lack of use. It never raises."""
+    if not config.USE_PG:
+        return
+    try:
+        pool = _get_pool()
+        raw = _checkout(pool)
+        try:
+            raw.cursor().execute("SELECT 1")
+            raw.rollback()
+        finally:
+            _last_used[id(raw)] = time.time()
+            pool.putconn(raw, close=bool(raw.closed))
+    except Exception:
+        pass
+
+
 def init() -> None:
-    with conn() as c:
-        c.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS papers(
-              id TEXT PRIMARY KEY, filename TEXT, title TEXT, status TEXT, error TEXT,
-              purpose TEXT, n_pages INTEGER DEFAULT 0, created_at REAL, updated_at REAL);
-            CREATE TABLE IF NOT EXISTS pages(
-              paper_id TEXT, page INTEGER, text TEXT, PRIMARY KEY(paper_id, page));
-            CREATE TABLE IF NOT EXISTS cards(
-              paper_id TEXT PRIMARY KEY, data TEXT, updated_at REAL);
-            CREATE TABLE IF NOT EXISTS extra_cards(
-              id TEXT PRIMARY KEY, paper_id TEXT, focus TEXT, purpose TEXT, status TEXT, error TEXT,
-              data TEXT, created_at REAL, updated_at REAL);
-            CREATE TABLE IF NOT EXISTS features(
-              name TEXT PRIMARY KEY, enabled INTEGER NOT NULL);
-            CREATE TABLE IF NOT EXISTS project(
-              id INTEGER PRIMARY KEY CHECK (id = 1), title TEXT NOT NULL DEFAULT '', question TEXT NOT NULL DEFAULT '',
-              stage TEXT NOT NULL DEFAULT '', updated_at REAL);
-            CREATE TABLE IF NOT EXISTS sub_questions(
-              id TEXT PRIMARY KEY, text TEXT NOT NULL, position INTEGER NOT NULL);
-            CREATE TABLE IF NOT EXISTS project_history(
-              id INTEGER PRIMARY KEY AUTOINCREMENT, field TEXT NOT NULL, old_value TEXT, new_value TEXT, changed_at REAL);
-            CREATE TABLE IF NOT EXISTS paper_tags(
-              paper_id TEXT NOT NULL, card_id TEXT NOT NULL DEFAULT '', sub_question_id TEXT NOT NULL,
-              PRIMARY KEY(paper_id, card_id, sub_question_id));
-            CREATE TABLE IF NOT EXISTS glossary(
-              id TEXT PRIMARY KEY, term TEXT, explanation TEXT, source TEXT, paper_id TEXT, page INTEGER DEFAULT 0, created_at REAL);
-            CREATE TABLE IF NOT EXISTS explanations(
-              id TEXT PRIMARY KEY, paper_id TEXT, card_id TEXT, text TEXT, result_json TEXT, score INTEGER, created_at REAL);
-            CREATE TABLE IF NOT EXISTS review_items(
-              id TEXT PRIMARY KEY, kind TEXT, paper_id TEXT, question TEXT, answer TEXT, quote TEXT, page INTEGER DEFAULT 0, created_at REAL,
-              card_id TEXT DEFAULT '', ref_id TEXT DEFAULT '', last_mark TEXT DEFAULT '', tries INTEGER DEFAULT 0);
-            CREATE TABLE IF NOT EXISTS goals(
-              id TEXT PRIMARY KEY, date TEXT, text TEXT, kind TEXT, target INTEGER DEFAULT 0, done INTEGER DEFAULT 0, created_at REAL);
-            CREATE TABLE IF NOT EXISTS wins(
-              id TEXT PRIMARY KEY, date TEXT, text TEXT, created_at REAL);
-            CREATE TABLE IF NOT EXISTS focus_sessions(
-              id TEXT PRIMARY KEY, start REAL, end REAL, minutes INTEGER DEFAULT 0, task_text TEXT, paper_id TEXT DEFAULT '',
-              date TEXT, planned INTEGER DEFAULT 0, goal_id TEXT DEFAULT '');
-            CREATE TABLE IF NOT EXISTS quests_active(
-              id TEXT PRIMARY KEY, code TEXT, week TEXT, chosen_at REAL, done_at REAL, UNIQUE(code, week));
-            CREATE TABLE IF NOT EXISTS activity(
-              id TEXT PRIMARY KEY, time REAL, date TEXT, kind TEXT, ref_id TEXT);
-            CREATE TABLE IF NOT EXISTS xp_events(
-              id TEXT PRIMARY KEY, time REAL, date TEXT, action TEXT, ref_id TEXT, xp INTEGER, UNIQUE(action, ref_id));
-            CREATE TABLE IF NOT EXISTS badges(
-              id TEXT PRIMARY KEY, code TEXT UNIQUE, earned_at REAL);
-            CREATE TABLE IF NOT EXISTS rewards(
-              id TEXT PRIMARY KEY, text TEXT, condition TEXT, earned_at REAL, claimed INTEGER DEFAULT 0, created_at REAL);
-            CREATE TABLE IF NOT EXISTS ai_log(
-              id INTEGER PRIMARY KEY AUTOINCREMENT, time REAL, feature TEXT, paper_id TEXT, provider TEXT, model TEXT);
-            """
-        )
-        # The thesis has one row. An older database keeps its research question: it moves from the settings into the project one time.
-        if not c.execute("SELECT 1 FROM project WHERE id=1").fetchone():
-            has_settings = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='settings'").fetchone()
-            old = c.execute("SELECT value FROM settings WHERE key='thesis_question'").fetchone() if has_settings else None
-            c.execute("INSERT INTO project(id,title,question,stage,updated_at) VALUES(1,'',?,'',?)", ((old["value"] if old else "") or "", time.time()))
-        c.execute("UPDATE extra_cards SET status='error', error='Processing stopped (server restart). Click Retry.' WHERE status IN ('processing','queued')")
-        # Spaced review (Sprint 06): the columns of the FSRS state. Older rows get their date now (they are due).
-        cols = {r["name"] for r in c.execute("PRAGMA table_info(review_items)")}
-        for name, typ in (("due", "REAL"), ("stability", "REAL"), ("difficulty", "REAL"), ("reps", "INTEGER DEFAULT 0"), ("lapses", "INTEGER DEFAULT 0"),
-                          ("last_review", "REAL"), ("fsrs_json", "TEXT")):
-            if name not in cols:
-                c.execute(f"ALTER TABLE review_items ADD COLUMN {name} {typ}")
-        c.execute("UPDATE review_items SET due=created_at WHERE due IS NULL")
-        # A word in the glossary is also a review item (kind "glossary"). Words saved before Sprint 02 get their item now.
-        c.execute("INSERT INTO review_items(id,kind,paper_id,question,answer,quote,page,created_at,ref_id,due) "
-                  "SELECT id,'glossary',paper_id,term,explanation,CASE WHEN source='paper' THEN explanation ELSE '' END,page,created_at,id,created_at FROM glossary "
-                  "WHERE id NOT IN (SELECT ref_id FROM review_items WHERE kind='glossary')")
-        # Bosses (Sprint 07): a paper can be marked as a boss. The date of the victory stays.
-        paper_cols = {r["name"] for r in c.execute("PRAGMA table_info(papers)")}
-        for name, typ in (("is_boss", "INTEGER DEFAULT 0"), ("boss_defeated_at", "REAL")):
-            if name not in paper_cols:
-                c.execute(f"ALTER TABLE papers ADD COLUMN {name} {typ}")
-        # Older databases have no focus column. Add it one time.
-        if "focus" not in {r["name"] for r in c.execute("PRAGMA table_info(papers)")}:
-            c.execute("ALTER TABLE papers ADD COLUMN focus TEXT DEFAULT ''")
-        # A restart can stop a job in the middle. Mark such papers, so you can retry them.
-        c.execute("UPDATE papers SET status='error', error='Processing stopped (server restart). Click Retry.' WHERE status IN ('processing','queued')")
+    """Start-up. SQLite: make the tables. Postgres: the tables of a user are made when the user is first seen."""
+    if not config.USE_PG:
+        with conn():
+            pass
 
 
 def now() -> float:
@@ -237,8 +459,7 @@ CACHE_MAX = 1000  # the oldest answers go first
 
 
 def _ensure_cache_table() -> None:
-    with conn() as c:
-        c.execute("CREATE TABLE IF NOT EXISTS llm_cache(key TEXT PRIMARY KEY, tag TEXT, provider TEXT, model TEXT, response TEXT, created_at REAL)")
+    """The table is in the schema. This function stays, so the callers do not change."""
 
 
 def cache_get(key: str):
@@ -491,7 +712,7 @@ def xp_all() -> list[dict]:
 
 def focus_minutes_by_day() -> dict[str, int]:
     with conn() as c:
-        return {r["date"]: r["n"] for r in c.execute("SELECT date, SUM(minutes) AS n FROM focus_sessions WHERE end IS NOT NULL GROUP BY date")}
+        return {r["date"]: r["n"] for r in c.execute("SELECT date, SUM(minutes) AS n FROM focus_sessions WHERE \"end\" IS NOT NULL GROUP BY date")}
 
 
 def badge_add(code: str, when: float) -> bool:
@@ -627,14 +848,14 @@ def win_delete(wid: str) -> bool:
 
 def focus_active():
     with conn() as c:
-        r = c.execute("SELECT * FROM focus_sessions WHERE end IS NULL ORDER BY start DESC LIMIT 1").fetchone()
+        r = c.execute("SELECT * FROM focus_sessions WHERE \"end\" IS NULL ORDER BY start DESC LIMIT 1").fetchone()
     return dict(r) if r else None
 
 
 def focus_start(task_text: str, paper_id: str, planned: int, goal_id: str, date: str) -> dict:
     sid = new_id()
     with conn() as c:
-        c.execute("INSERT INTO focus_sessions(id,start,end,minutes,task_text,paper_id,date,planned,goal_id) VALUES(?,?,NULL,0,?,?,?,?,?)",
+        c.execute("INSERT INTO focus_sessions(id,start,\"end\",minutes,task_text,paper_id,date,planned,goal_id) VALUES(?,?,NULL,0,?,?,?,?,?)",
                   (sid, now(), task_text, paper_id, date, planned, goal_id))
         return dict(c.execute("SELECT * FROM focus_sessions WHERE id=?", (sid,)).fetchone())
 
@@ -647,16 +868,16 @@ def focus_stop(max_minutes: int = 600):
     end = now()
     minutes = max(0, min(int(round((end - s["start"]) / 60)), max_minutes))
     with conn() as c:
-        c.execute("UPDATE focus_sessions SET end=?, minutes=? WHERE id=?", (end, minutes, s["id"]))
+        c.execute("UPDATE focus_sessions SET \"end\"=?, minutes=? WHERE id=?", (end, minutes, s["id"]))
         return dict(c.execute("SELECT * FROM focus_sessions WHERE id=?", (s["id"],)).fetchone())
 
 
 def focus_list(date: str | None = None) -> list[dict]:
     with conn() as c:
         if date:
-            rows = c.execute("SELECT * FROM focus_sessions WHERE date=? AND end IS NOT NULL ORDER BY start", (date,)).fetchall()
+            rows = c.execute("SELECT * FROM focus_sessions WHERE date=? AND \"end\" IS NOT NULL ORDER BY start", (date,)).fetchall()
         else:
-            rows = c.execute("SELECT * FROM focus_sessions WHERE end IS NOT NULL ORDER BY start").fetchall()
+            rows = c.execute("SELECT * FROM focus_sessions WHERE \"end\" IS NOT NULL ORDER BY start").fetchall()
     return [dict(r) for r in rows]
 
 
@@ -666,7 +887,7 @@ def focus_minutes(date: str) -> int:
 
 def focus_restore(row: dict) -> None:
     with conn() as c:
-        c.execute("INSERT OR IGNORE INTO focus_sessions(id,start,end,minutes,task_text,paper_id,date,planned,goal_id) VALUES(?,?,?,?,?,?,?,?,?)",
+        c.execute("INSERT OR IGNORE INTO focus_sessions(id,start,\"end\",minutes,task_text,paper_id,date,planned,goal_id) VALUES(?,?,?,?,?,?,?,?,?)",
                   (row["id"], row["start"], row["end"], row["minutes"], row["task_text"], row["paper_id"], row["date"], row["planned"], row["goal_id"]))
 
 
@@ -844,8 +1065,7 @@ def set_feature(name: str, enabled: bool) -> None:
 
 
 def _ensure_settings_table() -> None:
-    with conn() as c:
-        c.execute("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)")
+    """The table is in the schema. This function stays, so the callers do not change."""
 
 
 def get_setting(key: str, default: str = "") -> str:

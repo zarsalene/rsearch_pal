@@ -239,6 +239,29 @@ Create a private repository and push this folder.
 ### 5. Connect the two
 In Render, set `FRONTEND_ORIGIN` = your Vercel address (no slash at the end). To allow more addresses, write them with commas, for example `https://YOUR-APP.vercel.app,http://localhost,capacitor://localhost` (the last two are for a phone app). Redeploy. Open the Vercel address and sign in.
 
+## Many users and a database that stays (Supabase)
+
+By default the app has one user, one password, and a SQLite file. The free Render disk is erased at each restart, so the data is lost.
+**Multi-user mode** fixes both problems: each person signs in with an email and a password, and the data stays in a free Supabase (Postgres) database.
+
+- **Data:** each user has a schema of his own in Postgres ("u_<user id>") with all the tables. A user cannot reach the tables of another user. The page never talks to the database: it has only the public anon key, and all data goes through the backend.
+- **PDF files:** in a private bucket (`pdfs`), in a folder of the user.
+- **Search vectors:** in Postgres (pgvector). The server loads no local model and no ChromaDB, so it uses much less memory.
+
+How to turn it on:
+
+1. Supabase → New project (free, no card). SQL Editor → paste [supabase/schema.sql](supabase/schema.sql) → Run.
+2. Authentication → Providers → Email: on. For a test, turn **Confirm email** off. Authentication → URL Configuration: add your Vercel address.
+3. Render → Environment: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` (secret), `DATABASE_URL` (secret, the **Session pooler** string, with your database password), `EMBEDDING_BACKEND=gemini`, and `GEMINI_API_KEY`. Optional: `ALLOWED_EMAILS=you@example.com,friend@example.com` (empty = everybody can sign up, and every user spends your free AI quota).
+4. Vercel → Environment Variables: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the anon key, not the service key). Redeploy.
+5. Open the app. The page shows "Create an account". The old password login is off (the server answers 404).
+
+Without `SUPABASE_URL`, nothing changes: one user, password, SQLite.
+
+Limits: a free Supabase project has 500 MB of database and 1 GB of files, and it **pauses after 7 days without use** (`/api/health` touches the database, so the keep-alive job also keeps Supabase awake). Never put the service key or the database string in the frontend or in GitHub.
+
+Tests for this mode: `python tests/run_pg.py` runs the whole backend suite on your Supabase project (each test is a new user with a new schema, dropped at the end). It takes about 25 minutes.
+
 ## Free plan limits (read this)
 
 | Limit | What happens | What to do |
@@ -257,7 +280,7 @@ In Render, set `FRONTEND_ORIGIN` = your Vercel address (no slash at the end). To
 - Public hosting (Render, Vercel) also means your data is on their servers.
 - For truly private reading: run the backend on your own computer with Ollama
   (`LLM_PROVIDER=ollama`, `ollama pull llama3.1:8b`). No text leaves your computer.
-- The app has one password, a 14-day login, limits on wrong passwords, and refuses to start without a strong password and secret.
+- One-user mode: one password, a 14-day login, limits on wrong passwords, and the server refuses to start without a strong password and secret. Multi-user mode: Supabase checks the email login, and the server checks the token on each request.
 
 ## Tests
 

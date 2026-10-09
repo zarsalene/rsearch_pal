@@ -29,3 +29,11 @@ def test_the_student_chooses_the_ai(client, auth_headers):
     assert llm.choice()["primary"] == "groq"
     cfg = client.delete("/api/ai", headers=h).json()
     assert cfg["ai_choice"]["primary"] == "gemini" and cfg["ai_choice"]["custom"] is False
+
+
+def test_password_login_is_off_in_multi_user_mode(client):
+    import pytest
+    from app import config
+    if not config.MULTI_USER:
+        pytest.skip("one-user mode")
+    assert client.post("/api/login", json={"password": "anything"}).status_code == 404

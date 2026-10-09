@@ -279,7 +279,7 @@ export default function App() {
               onConfig={setConfig}
               onImported={refresh}
               onLogout={() => {
-                setToken("");
+                api.signOut();
                 setAuthed(false);
               }}
               notify={setNotice}

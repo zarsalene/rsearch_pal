@@ -1,13 +1,13 @@
 """Research_Pal API."""
-import logging, re, sqlite3, threading, time
+import logging, re, threading, time
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, companion, game, journey, pdf, project, quests, review, ste, today, understand, vectors, words
+from . import files, auth, cards, chat, config, db, features, links, llm, mindmap, companion, game, journey, pdf, project, quests, review, ste, today, understand, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -16,9 +16,9 @@ PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have littl
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     config.check_required()
-    config.PDF_DIR.mkdir(parents=True, exist_ok=True)
+    if not config.USE_PG:
+        config.PDF_DIR.mkdir(parents=True, exist_ok=True)
     db.init()
-    llm.load_choice()
     yield
 
 
@@ -50,7 +50,7 @@ def process_paper(pid: str, fresh: bool = False) -> None:
                 return
             pages, meta = db.get_pages(pid), ""
             if not pages:
-                pages, meta = pdf.extract_pages(config.PDF_DIR / f"{pid}.pdf")
+                pages, meta = pdf.extract_pages(files.source(pid))
                 db.save_pages(pid, pages)
             chunks = pdf.chunk_pages(pages)
             vectors.index_chunks(pid, [c for c in chunks if not c["refs"]])
@@ -85,9 +85,10 @@ def reindex_paper(pid: str) -> None:
             db.update_paper(pid, status="error", error="Could not rebuild the search index. Click Retry.")
 
 
-def paper_view(p: dict) -> dict:
+def paper_view(p: dict, have: set[str] | None = None) -> dict:
+    """have: the ids of the papers with a PDF file (one call for a whole list). Without it, ask for this paper."""
     p = dict(p)
-    p["has_pdf"] = (config.PDF_DIR / f"{p['id']}.pdf").exists()
+    p["has_pdf"] = (p["id"] in have) if have is not None else files.exists(p["id"])
     return p
 
 
@@ -151,11 +152,14 @@ class LoginIn(BaseModel):
 
 @app.get("/api/health")
 def health():
+    db.ping()  # a free Supabase project pauses after 7 days without use. The keep-alive job calls this every 10 minutes.
     return {"ok": True}
 
 
 @app.post("/api/login")
 def login(body: LoginIn, request: Request):
+    if config.MULTI_USER:
+        raise HTTPException(404, "Password login is off. Sign in with your email.")
     if not auth.check_password(request, body.password):
         raise HTTPException(401, "Wrong password.")
     return {"token": auth.make_token()}
@@ -381,25 +385,20 @@ def clear_cache():
 @app.post("/api/papers", dependencies=[Depends(auth.require_auth)])
 async def upload(background: BackgroundTasks, file: UploadFile = File(...), purpose: str = Form(""), focus: str = Form("")):
     pid = db.new_id()
-    path = config.PDF_DIR / f"{pid}.pdf"
-    config.PDF_DIR.mkdir(parents=True, exist_ok=True)
-    size, first = 0, True
+    parts, size = [], 0
+    while chunk := await file.read(1024 * 1024):
+        if not parts and not chunk.startswith(b"%PDF-"):
+            raise HTTPException(400, "This file is not a PDF.")
+        size += len(chunk)
+        if size > config.MAX_UPLOAD_BYTES:
+            raise HTTPException(413, f"The file is larger than {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
+        parts.append(chunk)
+    if size == 0:
+        raise HTTPException(400, "The file is empty.")
     try:
-        with open(path, "wb") as out:
-            while chunk := await file.read(1024 * 1024):
-                if first:
-                    if not chunk.startswith(b"%PDF-"):
-                        raise HTTPException(400, "This file is not a PDF.")
-                    first = False
-                size += len(chunk)
-                if size > config.MAX_UPLOAD_BYTES:
-                    raise HTTPException(413, f"The file is larger than {config.MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
-                out.write(chunk)
-        if size == 0:
-            raise HTTPException(400, "The file is empty.")
-    except HTTPException:
-        path.unlink(missing_ok=True)
-        raise
+        files.save(pid, b"".join(parts))
+    except files.StorageError as e:
+        raise HTTPException(503, str(e))
     db.add_paper(pid, (file.filename or "paper.pdf")[:200], purpose.strip()[:500], focus.strip()[:200])
     background.add_task(process_paper, pid)
     return {"id": pid, "status": "queued"}
@@ -408,7 +407,8 @@ async def upload(background: BackgroundTasks, file: UploadFile = File(...), purp
 @app.get("/api/papers", dependencies=[Depends(auth.require_auth)])
 def list_papers():
     tags = db.all_tags()  # {card id: [sub-question ids]} for each paper. The first card has the id "".
-    return [{**paper_view(p), "tags": tags.get(p["id"], {})} for p in db.list_papers()]
+    have = files.ids()
+    return [{**paper_view(p, have), "tags": tags.get(p["id"], {})} for p in db.list_papers()]
 
 
 @app.get("/api/papers/{pid}", dependencies=[Depends(auth.require_auth)])
@@ -423,10 +423,13 @@ def get_paper(pid: str):
 @app.get("/api/papers/{pid}/pdf", dependencies=[Depends(auth.require_auth)])
 def get_pdf(pid: str):
     must_get(pid)
-    path = config.PDF_DIR / f"{pid}.pdf"
-    if not path.exists():
+    try:
+        data = files.read(pid)
+    except files.StorageError as e:
+        raise HTTPException(503, str(e))
+    if data is None:
         raise HTTPException(404, "The PDF file is not on the server.")
-    return FileResponse(path, media_type="application/pdf")
+    return Response(data, media_type="application/pdf")
 
 
 @app.get("/api/papers/{pid}/page/{n}", dependencies=[Depends(auth.require_auth)])
@@ -706,7 +709,7 @@ def delete_paper(pid: str):
     must_get(pid)
     vectors.delete_paper(pid)
     db.delete_paper(pid)
-    (config.PDF_DIR / f"{pid}.pdf").unlink(missing_ok=True)
+    files.delete(pid)
     return {"ok": True}
 
 
@@ -1351,7 +1354,7 @@ def import_backup(data: dict, background: BackgroundTasks):
             if isinstance(x.get("card"), dict) and xid.isalnum() and len(xid) <= 32:
                 try:
                     db.add_extra(pid, str(x.get("focus") or "")[:200], str(x.get("purpose") or "")[:500], xid, x["card"])
-                except sqlite3.IntegrityError:
+                except db.INTEGRITY_ERRORS:
                     pass  # this card id exists already
         restore_tags(pid, d.get("tags"))
         background.add_task(reindex_paper, pid)
@@ -1360,7 +1363,7 @@ def import_backup(data: dict, background: BackgroundTasks):
         try:
             if str(g.get("source")) in ("paper", "ai") and str(g.get("id", "")).isalnum():
                 db.glossary_add(str(g["term"])[:80], str(g["explanation"])[:3000], str(g["source"]), str(g.get("paper_id", "")), int(g.get("page") or 0), str(g["id"]), float(g.get("created_at") or 0) or None)
-        except (KeyError, TypeError, ValueError, sqlite3.IntegrityError):
+        except (KeyError, TypeError, ValueError, *db.INTEGRITY_ERRORS):
             pass
     for e in data.get("explanations") or []:  # the attempts and the quiz questions are part of the backup. A row that exists is skipped.
         try:
