@@ -60,6 +60,12 @@ def init() -> None:
             CREATE TABLE IF NOT EXISTS focus_sessions(
               id TEXT PRIMARY KEY, start REAL, end REAL, minutes INTEGER DEFAULT 0, task_text TEXT, paper_id TEXT DEFAULT '',
               date TEXT, planned INTEGER DEFAULT 0, goal_id TEXT DEFAULT '');
+            CREATE TABLE IF NOT EXISTS xp_events(
+              id TEXT PRIMARY KEY, time REAL, date TEXT, action TEXT, ref_id TEXT, xp INTEGER, UNIQUE(action, ref_id));
+            CREATE TABLE IF NOT EXISTS badges(
+              id TEXT PRIMARY KEY, code TEXT UNIQUE, earned_at REAL);
+            CREATE TABLE IF NOT EXISTS rewards(
+              id TEXT PRIMARY KEY, text TEXT, condition TEXT, earned_at REAL, claimed INTEGER DEFAULT 0, created_at REAL);
             CREATE TABLE IF NOT EXISTS ai_log(
               id INTEGER PRIMARY KEY AUTOINCREMENT, time REAL, feature TEXT, paper_id TEXT, provider TEXT, model TEXT);
             """
@@ -355,6 +361,105 @@ def coverage() -> dict:
         total = c.execute("SELECT COUNT(*) AS n FROM papers").fetchone()["n"]
         tagged = c.execute("SELECT COUNT(DISTINCT paper_id) AS n FROM paper_tags").fetchone()["n"]
     return {"sub_questions": [dict(r) for r in rows], "papers": total, "untagged": total - tagged}
+# ---------- the game: XP events, badges, own rewards. Only the server writes XP (see game.py). ----------
+def xp_add(action: str, ref_id: str, xp: int, when: float, date: str) -> bool:
+    """False if this (action, ref_id) has XP already. The table has a UNIQUE key, so a second row is never possible."""
+    with conn() as c:
+        return c.execute("INSERT OR IGNORE INTO xp_events(id,time,date,action,ref_id,xp) VALUES(?,?,?,?,?,?)", (new_id(), when, date, action, ref_id, xp)).rowcount > 0
+
+
+def xp_total() -> int:
+    with conn() as c:
+        return c.execute("SELECT COALESCE(SUM(xp),0) AS n FROM xp_events").fetchone()["n"]
+
+
+def xp_counts() -> dict[str, int]:
+    with conn() as c:
+        return {r["action"]: r["n"] for r in c.execute("SELECT action, COUNT(*) AS n FROM xp_events GROUP BY action")}
+
+
+def xp_days() -> set[str]:
+    with conn() as c:
+        return {r["date"] for r in c.execute("SELECT DISTINCT date FROM xp_events")}
+
+
+def xp_by_day(action: str | None = None, count: bool = False) -> dict[str, int]:
+    q = "SELECT date, " + ("COUNT(*)" if count else "SUM(xp)") + " AS n FROM xp_events" + (" WHERE action=?" if action else "") + " GROUP BY date"
+    with conn() as c:
+        return {r["date"]: r["n"] for r in c.execute(q, (action,) if action else ())}
+
+
+def xp_recent(n: int = 10) -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT id, time, date, action, ref_id, xp FROM xp_events ORDER BY time DESC, rowid DESC LIMIT ?", (n,))]
+
+
+def xp_all() -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT id, time, date, action, ref_id, xp FROM xp_events ORDER BY time, rowid")]
+
+
+def focus_minutes_by_day() -> dict[str, int]:
+    with conn() as c:
+        return {r["date"]: r["n"] for r in c.execute("SELECT date, SUM(minutes) AS n FROM focus_sessions WHERE end IS NOT NULL GROUP BY date")}
+
+
+def badge_add(code: str, when: float) -> bool:
+    with conn() as c:
+        return c.execute("INSERT OR IGNORE INTO badges(id,code,earned_at) VALUES(?,?,?)", (new_id(), code, when)).rowcount > 0
+
+
+def badges_list() -> list[dict]:
+    with conn() as c:
+        return [dict(r) for r in c.execute("SELECT * FROM badges ORDER BY earned_at, rowid")]
+
+
+def reward_add(text: str, condition: str, rid: str | None = None, earned_at: float | None = None, claimed: bool = False, created_at: float | None = None) -> dict:
+    rid = rid or new_id()
+    with conn() as c:
+        c.execute("INSERT INTO rewards(id,text,condition,earned_at,claimed,created_at) VALUES(?,?,?,?,?,?)", (rid, text, condition, earned_at, int(claimed), created_at or now()))
+        return reward_row(c.execute("SELECT * FROM rewards WHERE id=?", (rid,)).fetchone())
+
+
+def reward_row(r) -> dict:
+    return {**dict(r), "claimed": bool(r["claimed"])}
+
+
+def rewards_list() -> list[dict]:
+    with conn() as c:
+        return [reward_row(r) for r in c.execute("SELECT * FROM rewards ORDER BY created_at, rowid")]
+
+
+def reward_get(rid: str):
+    with conn() as c:
+        r = c.execute("SELECT * FROM rewards WHERE id=?", (rid,)).fetchone()
+    return reward_row(r) if r else None
+
+
+def reward_earn(rid: str, when: float) -> None:
+    with conn() as c:
+        c.execute("UPDATE rewards SET earned_at=? WHERE id=? AND earned_at IS NULL", (when, rid))
+
+
+def reward_claim(rid: str) -> None:
+    with conn() as c:
+        c.execute("UPDATE rewards SET claimed=1 WHERE id=? AND earned_at IS NOT NULL", (rid,))
+
+
+def reward_delete(rid: str) -> bool:
+    with conn() as c:
+        return c.execute("DELETE FROM rewards WHERE id=?", (rid,)).rowcount > 0
+
+
+def xp_restore(row: dict) -> None:
+    with conn() as c:
+        c.execute("INSERT OR IGNORE INTO xp_events(id,time,date,action,ref_id,xp) VALUES(?,?,?,?,?,?)", (row["id"], row["time"], row["date"], row["action"], row["ref_id"], row["xp"]))
+
+
+def badge_restore(code: str, when: float) -> None:
+    badge_add(code, when)
+
+
 # ---------- goals, wins and focus sessions (the Today page) ----------
 def goals_list(date: str) -> list[dict]:
     with conn() as c:

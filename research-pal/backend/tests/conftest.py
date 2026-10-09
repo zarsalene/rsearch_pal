@@ -19,7 +19,7 @@ os.environ.update(
 import pytest
 from fastapi.testclient import TestClient
 
-from app import auth, config, llm, main, vectors
+from app import auth, config, db, llm, main, vectors
 from fake_ai import FakeAI
 from fake_vectors import FakeIndex
 from helpers import login
@@ -127,3 +127,12 @@ def real_vectors(monkeypatch):
         SharedSystemClient.clear_system_cache()
     except Exception:
         pass
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    """A clock that the test controls. clock.t is the time in seconds. The server uses it through db.now()."""
+    class Clock:
+        t = 1_000_000.0
+    monkeypatch.setattr(db, "now", lambda: Clock.t)
+    return Clock
