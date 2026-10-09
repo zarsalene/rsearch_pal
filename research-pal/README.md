@@ -1,5 +1,7 @@
 # Research_Pal
 
+**Live app:** https://rsearch-pal-7tor.vercel.app/ &nbsp;|&nbsp; **API:** https://research-pal-api.onrender.com/api/health &nbsp;|&nbsp; **Code:** https://github.com/zarsalene/rsearch_pal
+
 An AI app that reads your research papers and fills a reading card for each one:
 **My question, Problem, Method, Result, Limitation, Use.**
 It links the cards together and lets you search all your PDFs.
@@ -165,6 +167,28 @@ A region at 0% says **Not started** and gives a kind first step. There is no bla
 - **Duck:** in the Understand tab, the field says "Explain it to Duck". Duck shows a short, kind message after your explanation, a boss victory or a quiz. The texts are fixed. There is no AI. Click **Hide Duck**, or use the switch in Settings → Features.
 - The switches **Weekly quests and boss fights** and **Duck companion** turn these parts off. The backup file holds your quests and your bosses.
 
+## 3D avatar
+
+The Journey page shows a small 3D character. It shows your level. Each new level adds one item: a backpack, glasses and a book, a magnifying glass, a rope with a knot, a pen and a scroll, and a doctor cap with a gold star.
+
+- Turn the character with the mouse or the finger.
+- The avatar never gets sad. A lost streak changes nothing. The app never takes an item away.
+- Click **Hide avatar** to hide it. The browser keeps your choice. You can also switch the feature off in **Settings → Features**.
+- If your browser cannot show 3D, you see a flat picture with the same items.
+- The turning stops when you switch animations off or when your system asks for less motion.
+
+## Duck Island: a game to play
+
+On the Journey page, open **Duck Island**. It is a small game. It is only for fun.
+
+- **Walk:** use the arrow keys, W A S D, or click on the island. The buttons under the picture do the same.
+- **Mini-games:** **Quote Hunt** shows a quote from your papers. You choose the paper. **Word Match** shows a word from your glossary. You choose the meaning. A round has up to 5 questions. After the round, you see the source of each question: title, page and quote.
+- **Coins:** you win coins from the games (up to 15 each day) and from your real work (1 coin for each 5 points). Use coins in the **Shop** for items. Then **Decorate** the island: walk the Duck to a free tile and press **Place at the Duck**.
+- **No points:** play never gives points, levels or badges. Only real work gives them.
+- **Only checked material:** the games use only quotes that the app checked in the PDF text.
+- **No guilt:** no timer, no lives, nothing is lost. You can stop a round at any time. If the coins of today are full, you can still play for fun.
+- You can switch the feature off in **Settings → Features**.
+
 ## Citations and the literature review builder
 
 **Metadata.** On a card, the block **Metadata** shows the authors, the year, the venue and the DOI of the paper. Click **Fill from the PDF**.
@@ -184,7 +208,7 @@ A region at 0% says **Not started** and gives a kind first step. There is no bla
 - The words that you write give progress to the daily goal of the kind "words". A section of 300 words or more counts for the level **Author**.
 - The AI writes no text of your review.
 
-The switches **Citations and metadata** and **Literature review builder** in Settings → Features turn these parts off. The backup file holds the metadata and your review.
+The switches **Citations and metadata**, **Literature review builder** in Settings → Features turn these parts off. The backup file holds the metadata and your review.
 
 ## AI use log
 
@@ -234,7 +258,7 @@ The first upload downloads the small embedding model (about 80 MB). This happens
 ## Put it online for free
 
 ### 1. Get an AI key
-- Gemini (default): https://aistudio.google.com/apikey. Set `GEMINI_API_KEY`. Change the model with `GEMINI_MODEL`.
+- Gemini (default): https://aistudio.google.com/apikey. Set `GEMINI_API_KEY`. The default model is `gemini-3.1-flash-lite`. Change it with `GEMINI_MODEL`. Old names such as `gemini-2.5-flash` give error 404 for new keys.
 - **Fallback:** if Gemini gives an error (limit, outage, wrong key), the server asks Groq (`LLM_FALLBACK=groq`) for the same request. Gemini rests for 60 seconds (`LLM_COOLDOWN`), then the server uses it again. A provider without a key is skipped. The card shows which model made it.
 - **Saved answers:** the server saves each AI answer in the database. The same request gets the saved answer and does not call the AI. "Read again" on a card always asks the AI again. Settings has a button to delete the saved answers.
 - Groq: https://console.groq.com/keys (free plan). Default model: `llama-3.3-70b-versatile`.
@@ -246,29 +270,31 @@ Create a private repository and push this folder.
 
 ### 3. Backend on Render
 1. Render → New → Web Service → select your repository. Root directory: `research-pal/backend` (if your repository has the app at the top, use `backend`). Runtime: Python. Build: `pip install -r requirements.txt`. Start: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. Plan: Free. Health check path: `/api/health`.
-2. Set the variables: `APP_PASSWORD` (long), `SECRET_KEY` (at least 24 random characters), `GEMINI_API_KEY`, `GROQ_API_KEY`, `LLM_PROVIDER=gemini`, `LLM_FALLBACK=groq`, `FRONTEND_ORIGIN` (you set the real value in step 5), `PYTHON_VERSION=3.11.9`.
-3. Deploy. Test: open `https://YOUR-API.onrender.com/api/health`. You must see `{"ok":true}`.
+2. Set the variables: `APP_PASSWORD` (long), `SECRET_KEY` (at least 24 random characters), `GEMINI_API_KEY`, `GROQ_API_KEY`, `LLM_PROVIDER=gemini`, `LLM_FALLBACK=groq`, `EMBEDDING_BACKEND=gemini`, `FRONTEND_ORIGIN` (you set the real value in step 5), `PYTHON_VERSION=3.11.9`.
+   `EMBEDDING_BACKEND=gemini` makes the server ask the Gemini API for the search vectors. The server then does not load the local model, which needs too much memory for the free plan. It needs `GEMINI_API_KEY`. Without the key, an upload stops with the message "GEMINI_API_KEY is missing".
+3. Deploy. Test: open `https://YOUR-API.onrender.com/api/health`. You must see `{"ok":true}`. (The live app of this project: https://research-pal-api.onrender.com/api/health.)
 
 ### 4. Frontend on Vercel
 1. Vercel → Add New → Project → select the repository. Root directory: `research-pal/frontend` (or `frontend` if the app is at the top of your repository).
 2. Variable: `VITE_API_URL` = your Render address (no slash at the end).
-3. Deploy. You get an address like `https://research-pal.vercel.app`.
+3. Deploy. You get an address like `https://research-pal.vercel.app`. (The live app of this project: https://rsearch-pal-7tor.vercel.app/.)
 
 ### 5. Connect the two
-In Render, set `FRONTEND_ORIGIN` = your Vercel address (no slash at the end). Redeploy. Open the Vercel address and sign in.
+In Render, set `FRONTEND_ORIGIN` = your Vercel address (no slash at the end). To allow more addresses, write them with commas, for example `https://YOUR-APP.vercel.app,http://localhost,capacitor://localhost` (the last two are for a phone app). Redeploy. Open the Vercel address and sign in.
 
 ## Free plan limits (read this)
 
 | Limit | What happens | What to do |
 |---|---|---|
 | Render free disk is temporary | Papers and cards disappear when the server restarts or you deploy again | Download a backup in **Settings** every week. Restore it after a reset. A paid Render disk removes the problem. |
-| Render free server sleeps after 15 min | The first request needs up to one minute | Wait. The login page tells you. |
-| Render free server has 512 MB of memory | The embedding model needs most of it. If the server stops during an upload, memory is the reason | Upload one paper at a time. Or use a paid plan, or another host with more memory. |
+| Render free server sleeps after 15 min | The first request needs up to one minute | The GitHub job [keep-alive.yml](../.github/workflows/keep-alive.yml) calls the server every 10 minutes, so it stays awake. For a second safety, add a free monitor (UptimeRobot, 5 minutes) on `/api/health`. A free Render account has 750 server hours each month. One server that is always awake uses about 744, so do not run a second free service. |
+| Render free server has 512 MB of memory | The local embedding model needs most of it. If the server stops during an upload, memory is the reason | Set `EMBEDDING_BACKEND=gemini` (see step 3). Upload one paper at a time. Or use a paid plan, or another host with more memory. |
 | Groq free plan has rate limits | You see "free limit is reached" | Wait one minute and click Retry. Lower `LLM_CONTEXT_CHARS` if it continues. |
+| Large papers | The limits are 25 MB (`MAX_UPLOAD_MB`), 80 pages (`MAX_PAGES`) and 90,000 characters for one card (`LLM_CONTEXT_CHARS`). A larger paper is read in part. | Write a **Focus topic** when you add the paper, or cut the PDF before you upload it. |
 
 ## Privacy (you wrote: very sensitive data)
 
-- Search and links run on your server only. The embeddings never leave it.
+- With the default setting, search and links run on your server only. The embeddings never leave it. With `EMBEDDING_BACKEND=gemini`, the text of the chunks goes to Google to make the vectors.
 - To make a card, **selected passages of the paper (not the full PDF file) go to the AI provider** (Groq or OpenRouter). Read their data policy before you use unpublished or confidential papers.
 - Simple mode sends one text of a card (or a chat answer) to the AI provider. The word helper sends the word and up to 3 sentences of the paper, only when the paper has no definition.
 - Public hosting (Render, Vercel) also means your data is on their servers.
@@ -291,13 +317,12 @@ npm run e2e                 # tests in a real browser
 ```
 
 - **Truth tests:** the fake AI gives a false quote or a false number. The tests check that the server hides or labels it.
-- **CI:** GitHub runs all tests on each push. See `.github/workflows/ci.yml`.
+- **CI:** GitHub runs all tests on each push. See [.github/workflows/ci.yml](../.github/workflows/ci.yml).
 - **Real AI smoke test:** `python scripts/smoke_real_ai.py paper1.pdf paper2.pdf paper3.pdf`. It reads real papers with your AI key. You read the result.
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has two entries: **Chat** and **Thesis direction**.
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata** and **Literature review builder**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **3D avatar** and **Duck Island**.
 
 ## Later (your list)
 

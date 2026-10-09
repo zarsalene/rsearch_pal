@@ -25,6 +25,9 @@ services:
         value: gemini
       - key: LLM_FALLBACK
         value: groq
+      # The free plan has 512 MB. The Gemini API makes the search vectors, so the server needs no local model.
+      - key: EMBEDDING_BACKEND
+        value: gemini
       - key: GEMINI_API_KEY
         sync: false
       - key: GROQ_API_KEY

@@ -23,6 +23,8 @@ REGISTRY: dict[str, dict] = {
     "gaps": {"label": "Gap finder", "description": "Compare the papers of a sub-question: where they agree, where they disagree, and the gap. You confirm each gap.", "default": True},
     "coach": {"label": "Writing coach", "description": "Feedback on a paragraph: clear, logical, sourced, simple style. The coach never rewrites.", "default": True},
     "critique": {"label": "Quality check of a paper", "description": "A checklist for critical reading. Each answer has a quote, and it is an AI opinion that you can change.", "default": True},
+    "avatar": {"label": "3D avatar", "description": "A small 3D character on the Journey page. It shows your level. Each level adds one item. It never gets sad.", "default": True},
+    "play": {"label": "Duck Island: a game to play", "description": "A small island. Walk with the Duck, play mini-games with quotes from your papers, win coins and buy items for the island. Play gives no points and no levels.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 

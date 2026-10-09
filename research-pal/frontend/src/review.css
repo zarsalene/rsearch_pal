@@ -28,7 +28,7 @@
 .regions{list-style:none;padding:0;margin:0;display:none;gap:8px}
 .regionbtn{width:100%;text-align:left;display:grid;gap:4px;padding:10px 14px;background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-md);cursor:pointer;color:var(--ink)}
 .regionbtn.on{border-color:var(--accent)}
-.regionbtn .bar{margin:0}
+.regionbtn .pbar{margin:0}
 .regiondetail{background:var(--surface-2);border-radius:var(--r-md);padding:12px 16px;margin-top:10px}
 .regiondetail h3{margin:0 0 4px;font-size:1rem}
 @media (max-width:640px){.expedition .mapsvg{display:none}.regions{display:grid}}

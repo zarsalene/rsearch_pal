@@ -18,7 +18,7 @@ export function QuestCards({ data, onChoose, onDrop, busy }) {
             </h3>
             <p className="small">{q.text}</p>
             {(q.chosen || q.done) && (
-              <div className="bar" role="progressbar" aria-label={`Progress of ${q.title}`} aria-valuenow={q.have} aria-valuemin={0} aria-valuemax={q.need}>
+              <div className="pbar" role="progressbar" aria-label={`Progress of ${q.title}`} aria-valuenow={q.have} aria-valuemin={0} aria-valuemax={q.need}>
                 <span style={{ width: Math.round((100 * q.have) / q.need) + "%" }} />
               </div>
             )}
