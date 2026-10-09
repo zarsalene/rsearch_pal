@@ -79,6 +79,12 @@ export const api = {
   wins: (limit, before) => request(`/api/wins?limit=${limit}${before ? "&before=" + before : ""}`),
   focusStart: (body) => request("/api/focus/start", { method: "POST", json: body }),
   focusStop: () => request("/api/focus/stop", { method: "POST" }),
+  // Game: points, level, streak, badges, own rewards. The page cannot write points. It only reads them.
+  game: (date, tz) => request(`/api/game?date=${date}&tz=${tz}`),
+  gameSettings: (settings) => request("/api/game/settings", { method: "PUT", json: settings }),
+  addReward: (reward) => request("/api/rewards", { method: "POST", json: reward }),
+  claimReward: (id) => request(`/api/rewards/${id}/claim`, { method: "POST" }),
+  deleteReward: (id) => request(`/api/rewards/${id}`, { method: "DELETE" }),
   // Feature switches. setFeatures({ chat: false }) switches one feature off. The answer is the full list.
   features: () => request("/api/features"),
   setFeatures: (features) => request("/api/features", { method: "PUT", json: { features } }),

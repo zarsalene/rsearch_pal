@@ -1,0 +1,34 @@
+/* ---- Game: Journey page, level, streak, celebration (Sprint 05) ---- */
+.journey h1{margin-bottom:4px}
+.levelname{font-size:1.5rem;margin:0}
+.levelsteps{list-style:none;display:flex;flex-wrap:wrap;gap:6px;padding:0;margin:8px 0 12px}
+.levelsteps li{font-size:.78rem;font-weight:600;padding:2px 10px;border-radius:999px;background:var(--fill);color:var(--muted)}
+.levelsteps li.reached{background:var(--accent-soft);color:var(--accent)}
+.levelsteps li[aria-current=step]{outline:2px solid var(--accent)}
+.bar{height:8px;border-radius:999px;background:var(--fill);overflow:hidden;margin:6px 0 10px}
+.bar span{display:block;height:100%;background:var(--accent);border-radius:999px;transition:width .6s var(--ease)}
+.conds{margin:4px 0 0;padding-left:1.1em;font-size:.92rem;color:var(--muted)}
+.conds li.ok{color:var(--ok)}
+.badges{list-style:none;padding:0;margin:0 0 8px;display:flex;flex-wrap:wrap;gap:8px}
+.badge-item{padding:6px 14px;border-radius:999px;border:1px dashed var(--line-strong);font-size:.9rem}
+.badge-item.earned{border:1px solid var(--ok);background:var(--ok-soft);display:inline-flex;align-items:center;gap:6px}
+.records{border-collapse:collapse;width:100%;font-size:.92rem}
+.records th,.records td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--line)}
+.records thead th{font-size:.78rem;color:var(--muted);font-weight:600}
+.rewards,.recent{list-style:none;padding:0;margin:0 0 10px}
+.rewards li,.recent li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:5px 0}
+.rewards li span:first-child{flex:1}
+.rewards li.earned strong{color:var(--ok)}
+.rewards .cond{max-width:130px}
+.soon.live{opacity:1;border-style:solid}
+.soon.live>span:nth-of-type(1){font-weight:600}
+.xpnote{display:inline-block;background:var(--ok-soft);color:var(--ok);border-radius:999px;padding:4px 14px;font-weight:600;margin:10px 0 0}
+.celebrate{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:70;background:var(--surface);border:1px solid var(--ok);border-radius:var(--r-lg);box-shadow:var(--shadow-lg);padding:12px 22px;text-align:center;animation:celebrate-rise .5s var(--ease)}
+.celebrate p{margin:0 0 6px;font-family:var(--serif);font-size:1.1rem}
+@keyframes celebrate-rise{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+/* Animations can be switched off: in the Journey page, or with the setting "reduce motion" of the device. */
+:root[data-anim="off"] *{animation:none !important;transition:none !important}
+@media (prefers-reduced-motion:reduce){.celebrate{animation:none}.bar span{transition:none}}
+
+/* Nine tabs are many. On a medium screen, only the open tab shows its label. The other tabs keep their icon and their name for screen readers. */
+@media (max-width:1500px){.tabs button[aria-selected=false] .tl{display:none}.tabs button{padding:6px 12px}}

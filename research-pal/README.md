@@ -106,6 +106,30 @@ The backup file holds your attempts and your questions.
 
 The page never shows a word of blame. The backup file holds your goals, wins and focus sessions. The switch **Today page** in Settings → Features turns the page off.
 
+## Game: points, levels, streak, badges, rewards
+
+The **Journey** tab shows your progress. The **Today** page shows your level and your streak.
+
+**The golden rule: points come only from real work that the server checked.** The page cannot give points. The server gives a point only once for each action.
+
+| Action | Points | The server gives them when |
+|--------|--------|----------------------------|
+| Card ready | 10 | Each main field has a quote that the server found in the PDF. A hidden claim gives no points. |
+| Feynman check passed | 25 | Your score is 70 or more. One time for each paper. |
+| Quiz answer | 5 | The server marks it correct. One time for each question. |
+| Link explained | 10 | The explanation has a verified quote in both PDFs. |
+| Focus session | 1 for each 5 minutes | The session has 20 minutes or more. |
+| Win of the day | 2 | One time for each day. |
+
+- **Levels:** Explorer, Reader, Critic, Connector, Author, Doctor. A level needs points **and** a skill. Example: Reader needs 100 points, 5 cards with checked quotes and 3 Feynman checks passed. The levels from Critic need features that come in later sprints. The page says so.
+- **Kind streak:** a day counts when you got at least one point. You have 2 rest tokens each week. A day without work uses a token and keeps your streak. The weekend is off by default (a switch on the Journey page). After a long pause, the page says: "Welcome back. Your knowledge is still here."
+- **Badges:** few, on purpose: First card, First Feynman pass, 7-day streak, 30-day streak, 100 cards, 1 year.
+- **Records:** this week against last week, this month against last month. You compare with your own past only. There is no ranking.
+- **Your own rewards:** write a reward and a condition (`level:3`, `xp:500`, `streak:7` or `cards:20`). The app tells you when you earned it.
+- **Animations:** a calm message shows when you reach a new level or badge. You can switch the animations off on the Journey page. The setting "reduce motion" of your device also switches them off.
+
+The backup file holds your points, badges and rewards. The switch **Game** in Settings → Features turns the game off. While it is off, nobody gets points.
+
 ## AI use log
 
 The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.
@@ -217,7 +241,7 @@ npm run e2e                 # tests in a real browser
 ## Feature switches
 
 Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has two entries: **Chat** and **Thesis direction**.
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary** and **Today page**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page** and **Game**.
 
 ## Later (your list)
 

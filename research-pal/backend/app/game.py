@@ -131,7 +131,7 @@ def level_info(xp: int, have: dict) -> dict:
         name, need_xp, conds = LEVELS[reached + 1]
         nxt = {"name": name, "xp_needed": max(0, need_xp - xp), "xp_total": need_xp,
                "conditions": [{"text": text, "have": have.get(k) or 0, "need": n, "available": have.get(k) is not None} for k, text, n in conds]}
-    return {"index": reached, "name": LEVELS[reached][0], "next": nxt, "names": [name for name, _, _ in LEVELS]}
+    return {"index": reached, "name": LEVELS[reached][0], "floor": LEVELS[reached][1], "next": nxt, "names": [name for name, _, _ in LEVELS]}
 
 
 # ------------------------------------------------------------------ the kind streak
