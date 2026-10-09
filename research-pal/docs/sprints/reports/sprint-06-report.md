@@ -81,4 +81,4 @@ This sprint has no new AI call. So there is no new smoke test with the real AI.
 
 ## 7. CI result
 
-(see the run of the branch on GitHub)
+The run of the branch passed: https://github.com/zarsalene/rsearch_pal/actions/runs/37957822836
