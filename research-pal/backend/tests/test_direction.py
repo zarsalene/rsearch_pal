@@ -396,3 +396,13 @@ def test_a_restore_never_replaces_what_the_student_wrote(client, auth_headers):
 def test_an_old_backup_still_restores_the_question(client, auth_headers):
     client.post("/api/import", headers=auth_headers, json={"version": 1, "papers": [], "thesis_question": "From an old backup?"})
     assert client.get("/api/project", headers=auth_headers).json()["question"] == "From an old backup?"
+
+
+def test_the_default_fake_answers_work_for_the_browser_tests(client, auth_headers, fake_ai):
+    """fake_server.py uses the default answers. The end-to-end test of the helper needs them."""
+    h = auth_headers
+    vague = client.post("/api/project/question-check", headers=h, json={"question": VAGUE}).json()
+    assert vague["scope"]["status"] == "too_wide" and vague["finer"][0]["rating"] == "weak" and len(vague["versions"]) == 3
+    clear = client.post("/api/project/question-check", headers=h, json={"question": GOOD_Q}).json()
+    assert clear["scope"]["status"] == "ok" and all(i["rating"] == "ok" for i in clear["finer"])
+    assert len(client.post("/api/project/split", headers=h, json={"question": GOOD_Q}).json()["sub_questions"]) == 4

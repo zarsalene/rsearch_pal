@@ -7,6 +7,8 @@ import Chat from "./Chat.jsx";
 import Search from "./Search.jsx";
 import Graph from "./Graph.jsx";
 import Settings from "./Settings.jsx";
+import Project from "./Project.jsx";
+import ThesisBar from "./ThesisBar.jsx";
 import { Icon, Logo } from "./icons.jsx";
 import ThemeToggle from "./ThemeToggle.jsx";
 
@@ -15,6 +17,7 @@ const TABS = [
   ["chat", "Chat", "chat"],
   ["search", "Search", "search"],
   ["links", "Links", "graph"],
+  ["project", "Thesis", "flag"],
   ["settings", "Settings", "sliders"],
 ];
 
@@ -25,6 +28,8 @@ export default function App() {
   const [selected, setSelected] = useState(null);
   const [config, setConfig] = useState(null);
   const [features, setFeatures] = useState(null);
+  const [project, setProject] = useState(null); // the thesis: title, question, stage
+  const [subQuestions, setSubQuestions] = useState([]);
   const [notice, setNotice] = useState("");
   // The library can open and close. The choice is saved in this browser.
   const [libOpen, setLibOpen] = useState(() => {
@@ -61,7 +66,24 @@ export default function App() {
     refresh();
     api.config().then(setConfig).catch(() => {});
     api.features().then(setFeatures).catch(() => {});
+    api.project().then(setProject).catch(() => {});
+    api.subQuestions().then(setSubQuestions).catch(() => {}); // the server refuses this call when the feature is off
   }, [authed, refresh]);
+
+  // The question has one saved copy. Each page that changes it uses this function.
+  const changeProject = useCallback((p) => {
+    setProject(p);
+    setConfig((c) => (c ? { ...c, thesis_question: p.question } : c));
+  }, []);
+  const saveThesis = async (changes) => {
+    try {
+      changeProject(await api.saveProject(changes));
+      return true;
+    } catch (e) {
+      setNotice(e.message);
+      return false;
+    }
+  };
 
   // Poll while a paper is in progress
   const busy = papers.some((p) => p.status === "queued" || p.status === "processing");
@@ -86,8 +108,9 @@ export default function App() {
 
   // A feature that is switched off in Settings has no tab. While the list loads, all features show.
   const on = (name) => features?.find((f) => f.name === name)?.enabled !== false;
-  const shownTabs = TABS.filter(([k]) => k !== "chat" || on("chat"));
-  const page = tab === "chat" && !on("chat") ? "cards" : tab;
+  const shownTabs = TABS.filter(([k]) => (k !== "chat" || on("chat")) && (k !== "project" || on("direction")));
+  const page = (tab === "chat" && !on("chat")) || (tab === "project" && !on("direction")) ? "cards" : tab;
+  const paperTags = papers.find((p) => p.id === selected)?.tags || {};
 
   if (!authed) {
     return (
@@ -131,11 +154,14 @@ export default function App() {
         </div>
       )}
 
+      {on("direction") && <ThesisBar project={project} onSave={saveThesis} onOpenHelper={() => setTab("project")} />}
+
       <div className={"layout" + (libOpen ? "" : " collapsed")}>
         <Library
           papers={papers}
           selectedId={selected}
           config={config}
+          subQuestions={on("direction") ? subQuestions : []}
           onSelect={openPaper}
           onChanged={refresh}
           notify={setNotice}
@@ -146,6 +172,8 @@ export default function App() {
               <CardView
                 key={selected}
                 id={selected}
+                subQuestions={on("direction") ? subQuestions : []}
+                tags={paperTags}
                 onChanged={refresh}
                 onDeleted={() => {
                   setSelected(null);
@@ -191,11 +219,17 @@ export default function App() {
           )}
           {tab === "search" && <Search onOpenCard={openPaper} notify={setNotice} />}
           {tab === "links" && <Graph onOpenCard={openPaper} notify={setNotice} />}
+          {page === "project" && <Project project={project} subQuestions={subQuestions} onProject={changeProject} onSubQuestions={setSubQuestions} notify={setNotice} />}
           {tab === "settings" && (
             <Settings
               config={config}
+              project={on("direction") ? project : null}
+              onProject={changeProject}
               features={features}
-              onFeatures={setFeatures}
+              onFeatures={(list) => {
+                setFeatures(list);
+                api.subQuestions().then(setSubQuestions).catch(() => setSubQuestions([])); // the list is empty while the feature is off
+              }}
               onConfig={setConfig}
               onImported={refresh}
               onLogout={() => {

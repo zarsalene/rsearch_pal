@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
+import TagChips, { sqLabel } from "./TagChips.jsx";
 
 const VERDICT = { read: "Read it", skim: "Skim it", skip: "Skip it" };
 
@@ -11,8 +12,12 @@ function statusText(p) {
   return VERDICT[p.verdict] || "Ready";
 }
 
-export default function Library({ papers, selectedId, config, onSelect, onChanged, notify }) {
+// The sub-questions of a paper: all its cards together, in the order of the sub-questions.
+const paperTagIds = (p, subQuestions) => subQuestions.filter((s) => Object.values(p.tags || {}).some((ids) => ids.includes(s.id))).map((s) => s.id);
+
+export default function Library({ papers, selectedId, config, subQuestions = [], onSelect, onChanged, notify }) {
   const fileRef = useRef(null);
+  const [tagBusy, setTagBusy] = useState("");
   const [purpose, setPurpose] = useState("");
   const [focus, setFocus] = useState("");
   const [files, setFiles] = useState([]);
@@ -47,6 +52,19 @@ export default function Library({ papers, selectedId, config, onSelect, onChange
     setOpenSet(false);
     await onChanged();
     if (last) onSelect(last);
+  };
+
+  // Tag the first card of a paper. The tags of the other cards stay as they are.
+  const tag = async (p, ids) => {
+    setTagBusy(p.id);
+    try {
+      await api.setTags(p.id, "", ids);
+      await onChanged();
+    } catch (e) {
+      notify(e.message);
+    } finally {
+      setTagBusy("");
+    }
   };
 
   return (
@@ -118,7 +136,11 @@ export default function Library({ papers, selectedId, config, onSelect, onChange
                   <Icon name="target" size={12} /> {p.focus}
                 </span>
               )}
+              {paperTagIds(p, subQuestions).length > 0 && <span className="ptags">{paperTagIds(p, subQuestions).map((id) => sqLabel(subQuestions, id)).join(" · ")}</span>}
             </button>
+            {p.id === selectedId && subQuestions.length > 0 && (
+              <TagChips subQuestions={subQuestions} selected={(p.tags || {})[""] || []} onChange={(ids) => tag(p, ids)} busy={tagBusy === p.id} label={`Sub-questions of ${p.title || p.filename}`} />
+            )}
           </li>
         ))}
         {!papers.length && <li className="empty-list">No paper yet.</li>}

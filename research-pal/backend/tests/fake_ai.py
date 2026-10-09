@@ -6,6 +6,14 @@ Some answers are false on purpose (an invented quote, a number that is not in th
 def default_answers(messages, max_tokens=None):
     user = messages[-1]["content"]
     system = messages[0]["content"]
+    if "You are a careful research mentor" in system:  # the question helper (Sprint 03)
+        if "You suggest 3 to 5 sub-questions" in system:
+            return {"sub_questions": ["What data exists for this topic?", "Which method works best?", "How do we measure the result?", "What are the limits of the method?"]}
+        vague = "AI in health" in user  # a vague question gets weak ratings and a "too wide" scope. A clear question passes.
+        rate = lambda key: {"rating": "weak" if vague and key == "feasible" else "ok", "why": f"The {key} point is {'weak' if vague and key == 'feasible' else 'clear'}."}
+        return {"finer": {k: rate(k) for k in ("feasible", "interesting", "novel", "ethical", "relevant")},
+                "scope": {"status": "too_wide" if vague else "ok", "why": "The question covers a whole field." if vague else "The scope is good."},
+                "versions": ["Can deep learning find lung cancer in X-ray images?", "Does AI cut the time of a diagnosis in a hospital?", "How do nurses use AI tools in a clinic?"]}
     if "You make a mind map" in system:
         def node(i, parent, label, quote, page, text="Explained."):
             return {"id": i, "parent": parent, "label": label, "explanation": text, "evidence": [{"quote": quote, "page": page}]}

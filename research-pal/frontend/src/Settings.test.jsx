@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("./api.js", () => ({ api: { setFeatures: vi.fn() } }));
+vi.mock("./api.js", () => ({ api: { setFeatures: vi.fn(), saveProject: vi.fn() } }));
 import { api } from "./api.js";
 import Settings from "./Settings.jsx";
 
@@ -40,5 +40,28 @@ describe("Settings: feature switches", () => {
   it("shows no Features section while the list is not loaded", () => {
     setup({ features: null });
     expect(screen.queryByText("Features")).not.toBeInTheDocument();
+  });
+});
+
+describe("Settings: PhD stage", () => {
+  const PROJECT = { title: "", question: "", stage: "", stages: [{ value: "", label: "Not set" }, { value: "year_1", label: "Year 1" }, { value: "year_2_3", label: "Year 2-3" }, { value: "final_year", label: "Final year" }] };
+
+  it("lets the student choose the stage, and saves it on the server", async () => {
+    api.saveProject.mockResolvedValue({ ...PROJECT, stage: "year_2_3" });
+    const onProject = vi.fn();
+    setup({ project: PROJECT, onProject });
+    await userEvent.setup().selectOptions(screen.getByLabelText("Stage"), "year_2_3");
+    expect(api.saveProject).toHaveBeenCalledWith({ stage: "year_2_3" });
+    expect(onProject).toHaveBeenCalledWith({ ...PROJECT, stage: "year_2_3" });
+  });
+
+  it("shows the three stages", () => {
+    setup({ project: PROJECT });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Not set", "Year 1", "Year 2-3", "Final year"]);
+  });
+
+  it("has no stage choice while the thesis feature is off", () => {
+    setup({ project: null });
+    expect(screen.queryByLabelText("Stage")).not.toBeInTheDocument();
   });
 });

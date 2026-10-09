@@ -85,6 +85,20 @@ export const api = {
   setAi: (choice) => request("/api/ai", { method: "PUT", json: choice }),
   resetAi: () => request("/api/ai", { method: "DELETE" }),
   addCard: (id, { focus, purpose }) => request(`/api/papers/${id}/cards`, { method: "POST", json: { focus: focus || "", purpose: purpose || "" } }),
+  // The thesis. saveProject({ title, question, stage }): a field that you leave out keeps its saved value.
+  project: () => request("/api/project"),
+  saveProject: (changes) => request("/api/project", { method: "PUT", json: changes }),
+  projectHistory: () => request("/api/project/history"),
+  // The AI helpers only suggest. They save nothing.
+  questionCheck: (question) => request("/api/project/question-check", { method: "POST", json: { question } }),
+  splitQuestion: (question) => request("/api/project/split", { method: "POST", json: { question } }),
+  coverage: () => request("/api/project/coverage"),
+  subQuestions: () => request("/api/sub-questions"),
+  addSubQuestion: (text) => request("/api/sub-questions", { method: "POST", json: { text } }),
+  editSubQuestion: (id, change) => request(`/api/sub-questions/${id}`, { method: "PUT", json: change }),
+  deleteSubQuestion: (id) => request(`/api/sub-questions/${id}`, { method: "DELETE" }),
+  // Link one card of a paper to sub-questions. cardId "" is the first card. The new list replaces the old list.
+  setTags: (paperId, cardId, ids) => request(`/api/papers/${paperId}/tags`, { method: "PUT", json: { card_id: cardId || "", sub_question_ids: ids } }),
 };
 
 // The calls of one card. cid "" is the first card of the paper. Another cid is one more card of the same paper.
