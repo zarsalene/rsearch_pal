@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, game, journey, pdf, project, review, ste, today, understand, vectors, words
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, companion, game, journey, pdf, project, quests, review, ste, today, understand, vectors, words
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -913,8 +913,12 @@ class ExplainIn(BaseModel):
 @app.post("/api/papers/{pid}/explain", dependencies=[Depends(auth.require_auth), Depends(features.require("feynman"))])
 def explain_paper(pid: str, body: ExplainIn):
     """The Feynman check. The student explains the paper. The server checks each mark of the AI against the PDF."""
+    was_boss_down = bool((db.get_paper(pid) or {}).get("boss_defeated_at"))
     result = run_understand(pid, "explain", understand.explain, body.text, body.card_id)
     result["xp_gained"] = game.XP["feynman_pass"] if game_event(game.check_feynman, pid, result["score"]) else 0
+    game_event(quests.check_bosses)  # a better score can defeat a boss (the points can do it first)
+    p = db.get_paper(pid)
+    result["boss_defeated"] = p["title"] if p.get("boss_defeated_at") and not was_boss_down else ""
     return result
 
 
@@ -939,7 +943,10 @@ class Eli12In(BaseModel):
 
 @app.post("/api/papers/{pid}/eli12", dependencies=[Depends(auth.require_auth), Depends(features.require("eli12"))])
 def eli12_field(pid: str, body: Eli12In):
-    return run_understand(pid, "eli12", understand.eli12, body.field, body.card_id)
+    out = run_understand(pid, "eli12", understand.eli12, body.field, body.card_id)
+    db.activity_add("eli12_view", pid)  # a quest can ask for it
+    game_event(game.refresh)
+    return out
 
 
 class QuizIn(BaseModel):
@@ -969,9 +976,13 @@ def answer_quiz(rid: str, body: AnswerIn):
         raise HTTPException(404, "Question not found.")
     try:
         with llm.cache_scope(item["paper_id"]), llm.ai_context("quiz", item["paper_id"]):
+            was_boss_down = bool((db.get_paper(item["paper_id"]) or {}).get("boss_defeated_at"))
             result = understand.mark_answer(rid, body.answer)
             if result["mark"] == "correct":
                 game_event(game.award, "quiz_correct", rid)
+            game_event(quests.check_bosses)  # the quiz can defeat a boss
+            p = db.get_paper(item["paper_id"])
+            result["boss_defeated"] = p["title"] if p.get("boss_defeated_at") and not was_boss_down else ""
             return result
     except understand.UnderstandError as e:
         raise HTTPException(400, str(e))
@@ -1041,6 +1052,59 @@ def delete_glossary(gid: str):
     if not db.glossary_delete(gid):
         raise HTTPException(404, "Word not found.")
     return {"ok": True}
+
+
+# ---------- Quests, boss fights, companion ----------
+QUESTS = [Depends(auth.require_auth), Depends(features.require("quests"))]
+
+
+@app.get("/api/quests", dependencies=QUESTS)
+def get_quests(date: str | None = None, tz: int | None = None):
+    """The quests of this week (3 offered, up to 2 chosen), with the progress. The log of the quests that are done."""
+    return quests.summary(run_today(student_today, date, tz))
+
+
+@app.post("/api/quests/{code}/choose", dependencies=QUESTS)
+def choose_quest(code: str, date: str | None = None):
+    try:
+        quests.choose(run_today(student_today, date), code)
+    except quests.QuestError as e:
+        raise HTTPException(400, str(e))
+    return quests.summary(run_today(student_today, date))
+
+
+@app.post("/api/quests/{code}/drop", dependencies=QUESTS)
+def drop_quest(code: str, date: str | None = None):
+    try:
+        quests.drop(run_today(student_today, date), code)
+    except quests.QuestError as e:
+        raise HTTPException(400, str(e))
+    return quests.summary(run_today(student_today, date))
+
+
+class BossIn(BaseModel):
+    boss: bool
+
+
+@app.post("/api/papers/{pid}/boss", dependencies=QUESTS)
+def set_boss(pid: str, body: BossIn):
+    """Mark a hard paper as a boss, or take the mark away. A boss is defeated when the quiz and the Feynman check both reach 80%."""
+    must_get(pid)
+    quests.set_boss(pid, body.boss)
+    game_event(quests.check_bosses)
+    return quests.boss_status(pid)
+
+
+@app.get("/api/bosses", dependencies=QUESTS)
+def get_bosses():
+    game_event(quests.check_bosses)
+    return quests.bosses()
+
+
+@app.get("/api/companion", dependencies=[Depends(auth.require_auth), Depends(features.require("duck"))])
+def get_companion(event: str = "", seed: str = ""):
+    """Duck. Fixed messages, no AI. With an event: the message for it. Without: all the events."""
+    return {"message": companion.message(event, seed) if event else "", "events": sorted(companion.MESSAGES)}
 
 
 # ---------- Knowledge Garden: spaced review, and the Expedition map ----------
@@ -1228,6 +1292,7 @@ def export():
         d["pages"], d["card"] = db.get_pages(p["id"]), db.get_card(p["id"])
         d["extra_cards"] = [{"id": x["id"], "focus": x["focus"], "purpose": x["purpose"], "card": x["card"]} for x in db.list_extra(p["id"]) if x["card"]]
         d["tags"] = tags.get(p["id"], {})
+        d["is_boss"], d["boss_defeated_at"] = int(p.get("is_boss") or 0), p.get("boss_defeated_at")
         papers.append(d)
     proj = db.get_project()
     glossary = [{k: g[k] for k in ("id", "term", "explanation", "source", "paper_id", "page", "created_at")} for g in db.glossary_list()]
@@ -1236,7 +1301,7 @@ def export():
             "glossary": glossary, "ai_log": db.ai_log_list(100000)["rows"],
             "explanations": [{k: e[k] for k in ("id", "paper_id", "card_id", "text", "score", "created_at", "result")} for e in db.explanation_list_all()],
             "quiz": [{k: r[k] for k in ("id", "paper_id", "question", "answer", "quote", "page", "card_id", "created_at")} for r in db.review_list(kind="quiz")],
-            "review_state": db.review_state_rows(),
+            "review_state": db.review_state_rows(), "quests_active": db.quests_all(), "activity": db.activity_list(),
             "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
             "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list()}
 
@@ -1276,7 +1341,8 @@ def import_backup(data: dict, background: BackgroundTasks):
         if not pid.isalnum() or len(pid) > 32 or db.get_paper(pid):
             continue
         db.add_paper(pid, str(d.get("filename", "paper.pdf"))[:200], str(d.get("purpose", ""))[:500], str(d.get("focus") or "")[:200])
-        db.update_paper(pid, title=str(d.get("title", ""))[:300], n_pages=int(d.get("n_pages") or 0), status="queued")
+        db.update_paper(pid, title=str(d.get("title", ""))[:300], n_pages=int(d.get("n_pages") or 0), status="queued",
+                        is_boss=1 if d.get("is_boss") else 0, boss_defeated_at=d.get("boss_defeated_at"))
         db.save_pages(pid, [str(t) for t in d.get("pages", [])])
         if isinstance(d.get("card"), dict):
             db.save_card(pid, d["card"])
@@ -1308,6 +1374,18 @@ def import_backup(data: dict, background: BackgroundTasks):
                 db.review_add("quiz", str(r["paper_id"]), str(r["question"])[:300], str(r["answer"])[:400], str(r["quote"])[:600], int(r.get("page") or 0), str(r.get("card_id", "")), "", str(r["id"]), float(r.get("created_at") or 0) or None)
         except (KeyError, TypeError, ValueError):
             pass
+    for q in data.get("quests_active") or []:  # quests and bosses are part of the backup
+        try:
+            if quests.by_code(q["code"]) and str(q["id"]).isalnum():
+                db.quest_offer(q["code"], str(q["week"]), str(q["id"]), q.get("chosen_at"), q.get("done_at"))
+        except (KeyError, TypeError, ValueError):
+            pass
+    for a in data.get("activity") or []:
+        try:
+            if str(a["id"]).isalnum() and a["kind"] == "eli12_view":
+                db.activity_add("eli12_view", str(a["ref_id"]), str(a["id"]), float(a["time"]), today.clean_date(a["date"]))
+        except (KeyError, TypeError, ValueError, today.TodayError):
+            pass
     for s in data.get("review_state") or []:  # the dates of the review. The items come from the cards, the quiz and the glossary.
         try:
             db.review_restore_state({"id": str(s["id"]), "kind": str(s["kind"]), "ref_id": str(s.get("ref_id") or ""), "due": float(s["due"]), "stability": s.get("stability"),
@@ -1323,7 +1401,7 @@ def import_backup(data: dict, background: BackgroundTasks):
             pass
     for b in data.get("badges") or []:
         try:
-            if b["code"] in game.BADGES:
+            if b["code"] in game.BADGES or str(b["code"]).startswith("boss:"):
                 db.badge_restore(b["code"], float(b["earned_at"]))
         except (KeyError, TypeError, ValueError):
             pass

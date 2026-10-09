@@ -336,7 +336,7 @@ function CardTabs({ list, active, onPick, onAdd, canAdd }) {
 }
 
 // subQuestions: the sub-questions of the thesis (empty when the feature is off). tags: {card id: [sub-question ids]} of this paper.
-export default function CardView({ id, subQuestions = [], tags = {}, onChanged, onDeleted, notify, parts = { feynman: true, eli12: true, quiz: true } }) {
+export default function CardView({ id, subQuestions = [], tags = {}, onChanged, onDeleted, notify, parts = { feynman: true, eli12: true, quiz: true }, onHideDuck }) {
   const [view, setView] = useState("card"); // "card" or "understand"
   const understandOn = parts.feynman || parts.eli12 || parts.quiz;
   const [data, setData] = useState(null);
@@ -521,7 +521,7 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
           </button>
         </div>
       )}
-      {card && understandOn && view === "understand" && <Understand paperId={id} cardId={cid} card={card} parts={parts} notify={notify} />}
+      {card && understandOn && view === "understand" && <Understand paperId={id} cardId={cid} card={card} parts={parts} onHideDuck={onHideDuck} notify={notify} />}
 
       {card && (() => {
         const missing = CLAIMS.filter(([k]) => card.fields?.[k]?.status === "not_found");
@@ -605,6 +605,24 @@ export default function CardView({ id, subQuestions = [], tags = {}, onChanged, 
       )}
 
       <footer className="actions">
+        {parts.boss && (
+          <button
+            className="btn ghost"
+            aria-pressed={!!paper.is_boss}
+            title="A boss is a very hard paper. You defeat it with the quiz and the Feynman check, both at 80% or more."
+            onClick={async () => {
+              try {
+                await api.setBoss(id, !paper.is_boss);
+                await load();
+                onChanged();
+              } catch (e) {
+                notify(e.message);
+              }
+            }}
+          >
+            <Icon name="crown" size={15} /> {paper.is_boss ? "Boss paper. Click to unmark" : "Mark as boss"}
+          </button>
+        )}
         {paper.has_pdf && (
           <button className="btn ghost" onClick={() => api.openPdf(id).catch((e) => notify(e.message))}>
             <Icon name="external" size={15} /> Open the PDF

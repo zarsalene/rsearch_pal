@@ -7,5 +7,6 @@ import "./understand.css";
 import "./today.css";
 import "./game.css";
 import "./review.css";
+import "./quests.css";
 
 createRoot(document.getElementById("root")).render(<App />);

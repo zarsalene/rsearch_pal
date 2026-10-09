@@ -208,7 +208,14 @@ export default function App() {
                 id={selected}
                 subQuestions={on("direction") ? subQuestions : []}
                 tags={paperTags}
-                parts={{ feynman: on("feynman"), eli12: on("eli12"), quiz: on("quiz") }}
+                parts={{ feynman: on("feynman"), eli12: on("eli12"), quiz: on("quiz"), duck: on("duck"), boss: on("quests") }}
+                onHideDuck={async () => {
+                  try {
+                    setFeatures(await api.setFeatures({ duck: false }));
+                  } catch (e) {
+                    setNotice(e.message);
+                  }
+                }}
                 onChanged={refresh}
                 onDeleted={() => {
                   setSelected(null);
@@ -252,9 +259,9 @@ export default function App() {
               <Chat papers={papers} selectedId={selected} onOpenCard={openPaper} notify={setNotice} />
             </div>
           )}
-          {page === "today" && <Today papers={papers} onAction={goAction} gameOn={on("game")} reviewOn={on("review")} onOpenReview={() => setTab("review")} notify={setNotice} />}
+          {page === "today" && <Today papers={papers} onAction={goAction} gameOn={on("game")} reviewOn={on("review")} questsOn={on("quests") && on("game")} onOpenReview={() => setTab("review")} notify={setNotice} />}
           {page === "review" && <Review notify={setNotice} />}
-          {page === "journey" && <Journey notify={setNotice} mapOn={on("map")} gameOn={on("game")} onGo={(target) => setTab(hidden[target] ? "cards" : target)} />}
+          {page === "journey" && <Journey notify={setNotice} mapOn={on("map")} gameOn={on("game")} questsOn={on("quests") && on("game")} onGo={(target) => setTab(hidden[target] ? "cards" : target)} />}
           {page === "glossary" && <Glossary reloadKey={glossKey} notify={setNotice} />}
           {tab === "search" && <Search onOpenCard={openPaper} notify={setNotice} />}
           {tab === "links" && <Graph onOpenCard={openPaper} notify={setNotice} />}

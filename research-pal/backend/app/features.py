@@ -16,6 +16,8 @@ REGISTRY: dict[str, dict] = {
     "game": {"label": "Game: points, levels and streak", "description": "Points for real work that the server checks. Levels, a kind streak, badges and your own rewards.", "default": True},
     "review": {"label": "Knowledge Garden: spaced review", "description": "Review your cards, words and quiz questions on the right day. One plant for each paper.", "default": True},
     "map": {"label": "PhD Expedition map", "description": "A map of the PhD road with six regions. Each region fills with color as you work.", "default": True},
+    "quests": {"label": "Weekly quests and boss fights", "description": "Each week you choose up to 2 of 3 quests. Mark a hard paper as a boss and defeat it. A quest you do not finish has no penalty.", "default": True},
+    "duck": {"label": "Duck companion", "description": "A small Duck in the Understand tab. You explain ideas to it. It gives short, kind messages.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 
