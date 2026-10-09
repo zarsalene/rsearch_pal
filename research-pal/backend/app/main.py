@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from . import auth, cards, chat, config, db, features, links, llm, mindmap, cite, companion, game, journey, metadata, pdf, project, quests, review, ste, today, understand, vectors, words, writing
+from . import auth, cards, chat, config, db, features, links, llm, mindmap, cite, companion, game, journey, metadata, pdf, play, project, quests, review, ste, today, understand, vectors, words, writing
 
 log = logging.getLogger("research_pal")
 PROCESS_LOCK = threading.Lock()  # one paper at a time: small servers have little memory
@@ -1452,7 +1452,8 @@ def export():
             "review_doc": {"title": db.review_doc()["title"], "sections": [{k: s[k] for k in ("id", "position", "heading", "sub_question_id", "text")} for s in db.review_sections(db.review_doc()["id"])]},
             "review_state": db.review_state_rows(), "quests_active": db.quests_all(), "activity": db.activity_list(),
             "xp_events": db.xp_all(), "badges": db.badges_list(), "rewards": db.rewards_list(), "weekend_off": game.weekend_off(),
-            "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list()}
+            "goals": db.goals_all(), "wins": db.wins_list(100000), "focus_sessions": db.focus_list(),
+            "play_rounds": [r for r in db.play_rounds_all() if r["finished"]], "play_items": db.play_items_list()}
 
 
 def restore_project(data: dict) -> None:
@@ -1600,4 +1601,54 @@ def import_backup(data: dict, background: BackgroundTasks):
                 db.ai_log_add(row["feature"], row["paper_id"], row["provider"], row["model"], row["time"])
         except (KeyError, TypeError, ValueError):
             pass
+    for r in data.get("play_rounds") or []:  # the coins of the mini-games are part of the backup
+        try:
+            rid = str(r["id"])
+            if rid.isalnum() and r["game"] in play.GAMES and not db.play_round_get(rid):
+                db.play_round_add(r["game"], r["questions"], str(r["date"]), rid)
+                db.play_round_finish(rid, int(r["score"]), int(r["coins"]))
+        except (KeyError, TypeError, ValueError):
+            pass
+    for i in data.get("play_items") or []:
+        try:
+            if str(i["code"]) in play.PRICE:
+                db.play_item_buy(str(i["code"]), float(i.get("bought_at") or 0) or None, int(i.get("x", -1)), int(i.get("y", -1)))
+        except (KeyError, TypeError, ValueError):
+            pass
     return {"added": added}
+
+
+# ---------- Duck Island: a game world, mini-games on verified quotes, coins and a shop ----------
+PLAY = [Depends(auth.require_auth), Depends(features.require("play"))]
+
+
+def run_play(fn, *args):
+    try:
+        return fn(*args)
+    except play.PlayError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/play", dependencies=PLAY)
+def play_state():
+    return play.view()
+
+
+@app.post("/api/play/rounds", dependencies=PLAY)
+def play_new_round(body: dict):
+    return run_play(play.make_round, str(body.get("game", "")))
+
+
+@app.post("/api/play/rounds/{rid}/finish", dependencies=PLAY)
+def play_finish_round(rid: str, body: dict):
+    return run_play(play.finish_round, rid, body.get("answers"))
+
+
+@app.post("/api/play/buy", dependencies=PLAY)
+def play_buy(body: dict):
+    return run_play(play.buy, str(body.get("code", "")))
+
+
+@app.put("/api/play/items/{code}", dependencies=PLAY)
+def play_place(code: str, body: dict):
+    return run_play(play.place, code, body.get("x"), body.get("y"))

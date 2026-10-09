@@ -90,6 +90,12 @@ export const api = {
   reviewGarden: (date, tz) => request(`/api/review/garden?date=${date}&tz=${tz}`),
   rateReview: (id, rating, date) => request(`/api/review/${id}`, { method: "POST", json: { rating, date } }),
   journeyMap: () => request("/api/journey/map"),
+  // Duck Island. The server makes the questions, keeps the answers and the coins.
+  play: () => request("/api/play"),
+  newRound: (game) => request("/api/play/rounds", { method: "POST", json: { game } }),
+  finishRound: (id, answers) => request(`/api/play/rounds/${id}/finish`, { method: "POST", json: { answers } }),
+  buyItem: (code) => request("/api/play/buy", { method: "POST", json: { code } }),
+  placeItem: (code, x, y) => request(`/api/play/items/${code}`, { method: "PUT", json: { x, y } }),
   // Quests, bosses, Duck. The server checks the conditions. The page only shows them.
   quests: (date, tz) => request(`/api/quests?date=${date}&tz=${tz}`),
   chooseQuest: (code, date) => request(`/api/quests/${code}/choose?date=${date}`, { method: "POST" }),

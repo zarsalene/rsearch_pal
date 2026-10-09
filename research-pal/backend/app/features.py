@@ -21,6 +21,7 @@ REGISTRY: dict[str, dict] = {
     "cite": {"label": "Citations and metadata", "description": "Authors, year, venue and DOI of each paper. BibTeX and RIS export. A citation with a page number.", "default": True},
     "litreview": {"label": "Literature review builder", "description": "An outline from your sub-questions, an editor, and the checked quotes of your cards. You write the text.", "default": True},
     "avatar": {"label": "3D avatar", "description": "A small 3D character on the Journey page. It shows your level. Each level adds one item. It never gets sad.", "default": True},
+    "play": {"label": "Duck Island: a game to play", "description": "A small island. Walk with the Duck, play mini-games with quotes from your papers, win coins and buy items for the island. Play gives no points and no levels.", "default": True},
     "glossary": {"label": "Word helper and glossary", "description": "Select a word to see what it means. Save the word in your glossary.", "default": True},
 }
 

@@ -177,6 +177,18 @@ The Journey page shows a small 3D character. It shows your level. Each new level
 - If your browser cannot show 3D, you see a flat picture with the same items.
 - The turning stops when you switch animations off or when your system asks for less motion.
 
+## Duck Island: a game to play
+
+On the Journey page, open **Duck Island**. It is a small game. It is only for fun.
+
+- **Walk:** use the arrow keys, W A S D, or click on the island. The buttons under the picture do the same.
+- **Mini-games:** **Quote Hunt** shows a quote from your papers. You choose the paper. **Word Match** shows a word from your glossary. You choose the meaning. A round has up to 5 questions. After the round, you see the source of each question: title, page and quote.
+- **Coins:** you win coins from the games (up to 15 each day) and from your real work (1 coin for each 5 points). Use coins in the **Shop** for items. Then **Decorate** the island: walk the Duck to a free tile and press **Place at the Duck**.
+- **No points:** play never gives points, levels or badges. Only real work gives them.
+- **Only checked material:** the games use only quotes that the app checked in the PDF text.
+- **No guilt:** no timer, no lives, nothing is lost. You can stop a round at any time. If the coins of today are full, you can still play for fun.
+- You can switch the feature off in **Settings → Features**.
+
 ## Citations and the literature review builder
 
 **Metadata.** On a card, the block **Metadata** shows the authors, the year, the venue and the DOI of the paper. Click **Fill from the PDF**.
@@ -196,7 +208,7 @@ The Journey page shows a small 3D character. It shows your level. Each new level
 - The words that you write give progress to the daily goal of the kind "words". A section of 300 words or more counts for the level **Author**.
 - The AI writes no text of your review.
 
-The switches **Citations and metadata** and **Literature review builder** in Settings → Features turn these parts off. The backup file holds the metadata and your review.
+The switches **Citations and metadata**, **Literature review builder** in Settings → Features turn these parts off. The backup file holds the metadata and your review.
 
 ## AI use log
 
@@ -310,7 +322,7 @@ npm run e2e                 # tests in a real browser
 
 ## Feature switches
 
-Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata** and **Literature review builder** and **3D avatar**.
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. The switches are: **Chat**, **Simple mode**, **Explain it to me**, **Like I am 12**, **Quiz me**, **Word helper and glossary**, **Today page**, **Game**, **Knowledge Garden**, **PhD Expedition map**, **Weekly quests and boss fights**, **Duck companion**, **Citations and metadata**, **Literature review builder**, **3D avatar** and **Duck Island**.
 
 ## Later (your list)
 
