@@ -14,6 +14,7 @@ os.environ.update(
     LLM_COOLDOWN="60", LLM_CONTEXT_CHARS="90000", LLM_MIN_CONTEXT_CHARS="20000", CHAT_CONTEXT_CHARS="24000",
     LLM_MAX_TOKENS="8000", LLM_REASONING_EFFORT="medium", LINK_THRESHOLD="0.40", MIN_TEXT_CHARS="200",
     FRONTEND_ORIGIN="http://localhost:5173",
+    SUPABASE_URL="", SUPABASE_SERVICE_KEY="", DATABASE_URL="", ALLOWED_EMAILS="",  # tests run in one-user mode, whatever is in .env
 )
 
 import pytest
@@ -41,7 +42,7 @@ def isolated(tmp_path, monkeypatch):
         monkeypatch.setattr(config, name, value)
     # A fake collection in memory. See tests/fake_vectors.py for the reason. The code of vectors.py still runs.
     monkeypatch.setattr(vectors, "_col", FakeIndex().col)
-    monkeypatch.setattr(llm, "_choice", None)
+    monkeypatch.setattr(llm, "_choices", {})
     monkeypatch.setattr(llm.httpx, "post", _no_network)
     llm._down_until.clear()
     auth._attempts.clear()

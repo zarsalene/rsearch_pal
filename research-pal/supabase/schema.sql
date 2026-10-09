@@ -43,7 +43,7 @@ create table if not exists glossary (
   id         text primary key,
   user_id    uuid not null references auth.users(id) on delete cascade,
   term text, explanation text, source text,
-  paper_id   text references papers(id) on delete cascade,
+  paper_id   text,                       -- no foreign key: a term can have no paper (empty text)
   page       integer default 0,
   created_at double precision
 );

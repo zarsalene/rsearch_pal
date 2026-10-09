@@ -6,5 +6,6 @@ import "@fontsource-variable/geist";
 import "@fontsource-variable/source-serif-4";
 import "./styles.css";
 import "./simple-words.css";
+import "./mobile.css";
 
 createRoot(document.getElementById("root")).render(<App />);

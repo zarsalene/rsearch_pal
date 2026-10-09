@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, getToken, setToken } from "./api.js";
 import Login from "./Login.jsx";
 import Library from "./Library.jsx";
@@ -13,6 +13,9 @@ import LevelToggle from "./LevelToggle.jsx";
 import Glossary from "./Glossary.jsx";
 import WordHelper from "./WordHelper.jsx";
 import { setSimpleEnabled } from "./level.js";
+import { initNative, tap } from "./native.js";
+
+const PHONE = "(max-width: 820px)";
 
 const TABS = [
   ["cards", "Card", "doc"],
@@ -35,11 +38,26 @@ export default function App() {
   // The library can open and close. The choice is saved in this browser.
   const [libOpen, setLibOpen] = useState(() => {
     try {
-      return localStorage.getItem("rp-library") !== "closed";
+      const saved = localStorage.getItem("rp-library");
+      // On a phone the library is a drawer. It starts closed, so the card is the first thing you see.
+      if (!saved && window.matchMedia(PHONE).matches) return false;
+      return saved !== "closed";
     } catch {
       return true;
     }
   });
+  // The Android back button closes the drawer first. It gives true when it closed something.
+  const backRef = useRef(() => false);
+  backRef.current = () => {
+    if (libOpen && window.matchMedia(PHONE).matches) {
+      setLibOpen(false);
+      return true;
+    }
+    return false;
+  };
+  useEffect(() => {
+    initNative(() => backRef.current());
+  }, []);
   const toggleLib = () =>
     setLibOpen((v) => {
       try {
@@ -92,7 +110,7 @@ export default function App() {
     setSelected(id);
     setTab("cards");
     // On a phone the library takes the whole width. Close it, so the card is visible.
-    if (window.matchMedia("(max-width: 820px)").matches) setLibOpen(false);
+    if (window.matchMedia(PHONE).matches) setLibOpen(false);
   };
 
   // A feature that is switched off in Settings has no tab. While the list loads, all features show.
@@ -125,7 +143,7 @@ export default function App() {
         </div>
         <nav className="tabs" role="tablist" aria-label="Sections">
           {shownTabs.map(([k, label, icon]) => (
-            <button key={k} role="tab" aria-selected={tab === k} aria-label={label} onClick={() => { setTab(k); setNotice(""); }}>
+            <button key={k} role="tab" aria-selected={tab === k} aria-label={label} onClick={() => { setTab(k); setNotice(""); tap(); }}>
               <Icon name={icon} size={16} />
               <span className="tl">{label}</span>
             </button>
@@ -146,6 +164,8 @@ export default function App() {
         </div>
       )}
 
+      {/* On a phone the library is a drawer. A tap outside it closes it. */}
+      <button className={"scrim" + (libOpen ? " on" : "")} tabIndex={-1} aria-hidden="true" onClick={() => setLibOpen(false)} />
       <div className={"layout" + (libOpen ? "" : " collapsed")}>
         <Library
           papers={papers}

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 import httpx
 
-from . import config, db
+from . import auth, config, db
 
 log = logging.getLogger("research_pal")
 
@@ -80,17 +80,22 @@ def _cache_put(key: str, tag: str, p: dict, out: dict) -> None:
         log.exception("Could not save an AI answer")
 
 
-_choice: dict | None = None  # what the student chose in Settings: {"primary": "gemini", "fallbacks": ["groq"], "models": {"gemini": "..."}}
+_choices: dict[str, dict | None] = {}  # user id -> what the student chose in Settings: {"primary": "gemini", "fallbacks": ["groq"], "models": {"gemini": "..."}}
 
 
 def load_choice() -> None:
-    """Read the choice of the student from the database. Call it at start-up."""
-    global _choice
+    """Read the choice of the current user from the database."""
     try:
         data = json.loads(db.get_setting("ai_choice") or "null")
     except ValueError:
         data = None
-    _choice = _clean_choice(data) if data else None
+    _choices[auth.current_user()] = _clean_choice(data) if data else None
+
+
+def _my_choice() -> dict | None:
+    if auth.current_user() not in _choices:
+        load_choice()
+    return _choices.get(auth.current_user())
 
 
 def _clean_choice(data) -> dict | None:
@@ -112,24 +117,25 @@ def _clean_choice(data) -> dict | None:
 
 def set_choice(data) -> dict | None:
     """Save the choice (or None = use the settings of the server). The choice works at once."""
-    global _choice
-    _choice = _clean_choice(data) if data else None
-    db.set_setting("ai_choice", json.dumps(_choice) if _choice else "")
+    c = _clean_choice(data) if data else None
+    _choices[auth.current_user()] = c
+    db.set_setting("ai_choice", json.dumps(c) if c else "")
     with _lock:
         _down_until.clear()
-    return _choice
+    return c
 
 
 def choice() -> dict:
     """The choice that works now, and if the student made it."""
     chain = _chain()
-    return {"primary": chain[0]["name"], "fallbacks": [p["name"] for p in chain[1:]], "models": {p["name"]: p["model"] for p in chain}, "custom": _choice is not None}
+    return {"primary": chain[0]["name"], "fallbacks": [p["name"] for p in chain[1:]], "models": {p["name"]: p["model"] for p in chain}, "custom": _my_choice() is not None}
 
 
 def _chain() -> list[dict]:
     """The providers in order. API keys come from the server environment only."""
-    if _choice:
-        return config.build_chain([_choice["primary"], *_choice["fallbacks"]], _choice["models"], legacy=False)
+    ch = _my_choice()
+    if ch:
+        return config.build_chain([ch["primary"], *ch["fallbacks"]], ch["models"], legacy=False)
     # no choice: the settings of the server. The first key is read live, so a changed setting works at once.
     return [({**p, "key": config.LLM_API_KEY} if i == 0 else p) for i, p in enumerate(config.LLM_CHAIN)]
 
