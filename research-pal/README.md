@@ -123,12 +123,25 @@ In Render, set `FRONTEND_ORIGIN` = your Vercel address (no slash at the end). Re
 
 ## Tests
 
+All tests use a fake AI. They need no API key and no network. Read [docs/TESTING.md](docs/TESTING.md) for the full steps.
+
 ```bash
 cd backend
-pip install reportlab
-python tests/test_pipeline.py
+pip install -r requirements.txt -r requirements-dev.txt
+pytest                      # backend tests, about 15 seconds
+cd ../frontend
+npm install
+npm test                    # unit tests
+npm run e2e                 # tests in a real browser
 ```
-The test uses a fake AI. It checks the PDF reading, the quote check, the hiding of false claims, search, links, backup and restore.
+
+- **Truth tests:** the fake AI gives a false quote or a false number. The tests check that the server hides or labels it.
+- **CI:** GitHub runs all tests on each push. See `.github/workflows/ci.yml`.
+- **Real AI smoke test:** `python scripts/smoke_real_ai.py paper1.pdf paper2.pdf paper3.pdf`. It reads real papers with your AI key. You read the result.
+
+## Feature switches
+
+Each feature has a switch in **Settings → Features**. Switch a feature off if it gives a problem. The tab goes away and the server refuses the calls of that feature. Your data stays. Today the switch list has one entry: **Chat**.
 
 ## Later (your list)
 
