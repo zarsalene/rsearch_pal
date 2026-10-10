@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
@@ -208,9 +208,8 @@ export default function Library({ papers, selectedId, config, subQuestions = [],
         </div>
       )}
       <ul className="plist">
-        <AnimatePresence>
         {shown.map((p, i) => (
-          <motion.li key={p.id} layout="position" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ type: "spring", stiffness: 320, damping: 30, delay: Math.min(i, 8) * 0.03 }}>
+          <motion.li key={p.id} layout="position" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} transition={{ type: "spring", stiffness: 320, damping: 30, delay: Math.min(i, 8) * 0.03 }}>
             <button className={"pitem" + (p.id === selectedId ? " sel" : "")} onClick={() => onSelect(p.id)}>
               <span className="ptitle">
                 {p.is_boss ? <Icon name="crown" size={13} className="crown" /> : null}
@@ -229,7 +228,6 @@ export default function Library({ papers, selectedId, config, subQuestions = [],
             )}
           </motion.li>
         ))}
-        </AnimatePresence>
         {!papers.length && <li className="empty-list">No paper yet.</li>}
         {papers.length > 0 && !shown.length && <li className="empty-list">No paper matches “{filter}”.</li>}
       </ul>

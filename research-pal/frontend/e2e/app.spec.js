@@ -560,12 +560,15 @@ test.describe.serial("Research Pal", () => {
     await expect(field).toBeVisible();
 
     // a paper that has a free PDF: the app reads it
+    const before = await library.locator("li").count();
     await library.getByLabel("Add by DOI, link or title").fill("https://doi.org/10.9999/closed.1");
     await library.getByRole("button", { name: "Add the paper" }).click();
     await expect(page.getByText("The app is reading the paper.")).toBeVisible();
+    // the app shows the message first and then loads the list again, so wait for the new item before we count
+    await expect(library.locator("li")).toHaveCount(before + 1);
 
     // the same paper is not added twice
-    const count = await library.locator("li").count();
+    const count = before + 1;
     await library.getByLabel("Add by DOI, link or title").fill("https://doi.org/10.9999/closed.1");
     await library.getByRole("button", { name: "Add the paper" }).click();
     await expect(page.getByText("This paper is in your library already.")).toBeVisible();
