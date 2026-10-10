@@ -29,7 +29,8 @@ test.describe.serial("Research Pal", () => {
     await page.locator('input[type="file"]').setInputFiles(PDF);
     await page.getByRole("button", { name: "Read the paper" }).click();
 
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("AUTOMA: Multi-agent threat hunting");
+    // the first upload of a new server also starts the vector store (a slow first start on a slow PC), so this one waits longer
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("AUTOMA: Multi-agent threat hunting", { timeout: 60000 });
     // a true claim shows its quote and its page
     const problem = page.locator("#f-problem");
     await expect(problem).toContainText("Analysts spend many hours on manual log review");

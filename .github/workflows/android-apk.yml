@@ -1,0 +1,96 @@
+# Builds a signed release APK that you can install on a phone. Start it by hand (Actions > Android APK > Run workflow) or by a push that changes this file.
+# The server address is the repository variable API_URL. If it is not set, the Render address below is used.
+# The signing key comes from 4 secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+# The sign-in with Supabase uses the public anon key. It is public by design (it is in every web app that uses Supabase).
+# The repository variable SUPABASE_ANON_KEY replaces it, if you set one.
+name: Android APK
+
+on:
+  workflow_dispatch:
+  # It also starts when this file or the app changes on a branch. The "Run workflow" button shows only for files on main.
+  push:
+    paths:
+      - .github/workflows/android-apk.yml
+      - research-pal/frontend/**
+
+# The release step needs the right to write releases.
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: Build the release APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: research-pal/frontend
+    env:
+      VITE_API_URL: ${{ vars.API_URL || 'https://research-pal-api.onrender.com' }}
+      VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://iqqqearogsjtplheugsk.supabase.co' }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxcXFlYXJvZ3NqdHBsaGV1Z3NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjEwODUsImV4cCI6MjEwNzEzNzA4NX0.yWEUdk5GhdfBaF3VD2LQ5ZaNoAhS6y9ILYANaWLDvPA' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: research-pal/frontend/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npx vite build
+      - run: npx cap sync android
+      - name: Prepare the signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KS_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KS="$RUNNER_TEMP/release.p12"
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$KS"
+            ALIAS="$KS_ALIAS"; PASS="$KS_PASS"; KPASS="${KS_KEY_PASS:-$KS_PASS}"
+          else
+            echo "::warning::No signing secrets found. This APK has a one-time key. To update the app later, you must uninstall it first. Add the 4 ANDROID_* secrets for a permanent key."
+            ALIAS=temporary; PASS=$(openssl rand -hex 12); KPASS=$PASS
+            keytool -genkeypair -storetype pkcs12 -keystore "$KS" -alias "$ALIAS" -keyalg RSA -keysize 2048 -validity 10000 -storepass "$PASS" -keypass "$KPASS" -dname "CN=Research Pal temporary"
+          fi
+          {
+            echo "RP_KEYSTORE_FILE=$KS"
+            echo "RP_KEYSTORE_PASSWORD=$PASS"
+            echo "RP_KEY_ALIAS=$ALIAS"
+            echo "RP_KEY_PASSWORD=$KPASS"
+            echo "RP_VERSION_CODE=${{ github.run_number }}"
+          } >> "$GITHUB_ENV"
+      - run: chmod +x android/gradlew
+      - run: ./gradlew assembleRelease
+        working-directory: research-pal/frontend/android
+      - name: Check the signature
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)/apksigner" verify --print-certs "$APK"
+          cp "$APK" Research-Pal.apk
+        working-directory: research-pal/frontend/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: research-pal-apk
+          path: research-pal/frontend/android/Research-Pal.apk
+      # A public download link, without a zip and without a login:
+      # https://github.com/${{ github.repository }}/releases/download/android-latest/Research-Pal.apk
+      - name: Publish the download link
+        working-directory: research-pal/frontend/android
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG=android-latest
+          NOTES="Build ${{ github.run_number }}, commit ${GITHUB_SHA::7}. Open this page on your phone, tap Research-Pal.apk, then install."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes "$NOTES"
+          else
+            gh release create "$TAG" --target "$GITHUB_SHA" --prerelease --title "Research Pal for Android" --notes "$NOTES"
+          fi
+          gh release upload "$TAG" Research-Pal.apk --clobber

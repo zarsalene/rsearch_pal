@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import { api, getToken, setToken } from "./api.js";
 import Login from "./Login.jsx";
 import Library from "./Library.jsx";
@@ -23,6 +24,9 @@ import GameWatcher from "./GameWatcher.jsx";
 import { applyAnimations } from "./game.js";
 import WordHelper from "./WordHelper.jsx";
 import { setSimpleEnabled } from "./level.js";
+import MoreSheet from "./MoreSheet.jsx";
+import { initNative, tap } from "./native.js";
+import { isPhone, usePhone } from "./phone.js";
 
 const TABS = [
   ["today", "Today", "target"],
@@ -40,6 +44,9 @@ const TABS = [
   ["settings", "Settings", "sliders"],
 ];
 
+// On a phone the bottom bar has these tabs. The other pages are in the sheet "More".
+const DOCK = ["today", "cards", "chat", "search"];
+
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken());
   const [tab, setTab] = useState("today"); // Today is the home page
@@ -51,10 +58,15 @@ export default function App() {
   const [subQuestions, setSubQuestions] = useState([]);
   const [glossKey, setGlossKey] = useState(0); // changes when a word is saved, so the Glossary page reloads
   const [notice, setNotice] = useState("");
+  const [more, setMore] = useState(false); // the sheet "More" of the phone
+  const phone = usePhone();
   // The library can open and close. The choice is saved in this browser.
   const [libOpen, setLibOpen] = useState(() => {
     try {
-      return localStorage.getItem("rp-library") !== "closed";
+      const saved = localStorage.getItem("rp-library");
+      // On a phone the library is a drawer. It starts closed, so the card is the first thing you see.
+      if (!saved && isPhone()) return false;
+      return saved !== "closed";
     } catch {
       return true;
     }
@@ -66,6 +78,27 @@ export default function App() {
       } catch {}
       return !v;
     });
+
+  const closeLib = () => setLibOpen(false);
+  // The Android back button closes the sheet or the drawer first. The ref always has the newest state.
+  const live = useRef({});
+  live.current = { libOpen, more };
+  useEffect(
+    () =>
+      initNative(() => {
+        const { libOpen: open, more: sheet } = live.current;
+        if (sheet) {
+          setMore(false);
+          return true;
+        }
+        if (open && isPhone()) {
+          setLibOpen(false);
+          return true;
+        }
+        return false;
+      }),
+    [],
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -88,6 +121,14 @@ export default function App() {
     api.features().then(setFeatures).catch(() => {});
     api.project().then(setProject).catch(() => {});
     api.subQuestions().then(setSubQuestions).catch(() => {}); // the server refuses this call when the feature is off
+  }, [authed, refresh]);
+
+  // The app comes back from the background (the phone was locked, or you used another app): the papers are fresh again.
+  useEffect(() => {
+    if (!authed) return;
+    const onVisible = () => document.visibilityState === "visible" && refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [authed, refresh]);
 
   // The question has one saved copy. Each page that changes it uses this function.
@@ -136,6 +177,14 @@ export default function App() {
   const hidden = { write: !on("litreview"), today: !on("today"), review: !on("review"), journey: !on("game") && !on("map"), chat: !on("chat"), project: !on("direction"), glossary: !on("glossary"), toread: !on("findpapers"), plan: !on("plan") }; // a tab of a feature that is switched off
   const shownTabs = TABS.filter(([k]) => !hidden[k]);
   const page = hidden[tab] ? "cards" : tab;
+  const dockTabs = phone ? shownTabs.filter(([k]) => DOCK.includes(k)) : shownTabs;
+  const moreTabs = phone ? shownTabs.filter(([k]) => !DOCK.includes(k)) : [];
+  const moreActive = more || moreTabs.some(([k]) => k === tab);
+  const go = (k) => {
+    setTab(k);
+    setNotice("");
+    setMore(false);
+  };
   const paperTags = papers.find((p) => p.id === selected)?.tags || {};
   // The big button of the Today page opens the right place.
   const goAction = (a) => {
@@ -169,33 +218,54 @@ export default function App() {
             <Icon name="sidebar" size={18} />
           </button>
           <Logo size={26} />
-          Research Pal
+          <span className="brand-name">Research Pal</span>
         </div>
         <nav className="tabs" role="tablist" aria-label="Sections">
-          {shownTabs.map(([k, label, icon]) => (
-            <button key={k} role="tab" aria-selected={tab === k} aria-label={label} onClick={() => { setTab(k); setNotice(""); }}>
+          {dockTabs.map(([k, label, icon]) => (
+            <button key={k} role="tab" aria-selected={tab === k} aria-label={label} title={label} onClick={() => { go(k); tap(); }}>
+              {/* One pill moves from tab to tab. This shows where you are, and where you go. */}
+              {tab === k && <motion.span layoutId="tabpill" className="tabpill" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
               <Icon name={icon} size={16} />
               <span className="tl">{label}</span>
             </button>
           ))}
+          {moreTabs.length > 0 && (
+            <button role="tab" aria-selected={moreActive} aria-haspopup="dialog" aria-expanded={more} aria-label="More" title="More" onClick={() => { setMore(!more); tap(); }}>
+              {moreActive && <motion.span layoutId="tabpill" className="tabpill" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
+              <Icon name="dots" size={16} />
+              <span className="tl">More</span>
+            </button>
+          )}
         </nav>
         <div className="bar-end">
           {on("simple") && <LevelToggle />}
-          <ThemeToggle />
+          {!phone && <ThemeToggle />}
         </div>
       </header>
+      <MoreSheet open={more} tabs={moreTabs} current={tab} onPick={go} onClose={() => setMore(false)} />
 
-      {notice && (
-        <div className="toast" role="alert">
-          <span>{notice}</span>
-          <button className="link" onClick={() => setNotice("")}>
-            Close
-          </button>
-        </div>
-      )}
+      <AnimatePresence>
+        {notice && (
+          <motion.div
+            className="toast"
+            role="alert"
+            initial={{ opacity: 0, y: -16, x: "-50%", scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+            exit={{ opacity: 0, y: -10, x: "-50%" }}
+            transition={{ type: "spring", stiffness: 420, damping: 32 }}
+          >
+            <span>{notice}</span>
+            <button className="link" onClick={() => setNotice("")}>
+              Close
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {on("direction") && <ThesisBar project={project} onSave={saveThesis} onOpenHelper={() => setTab("project")} />}
 
+      {/* On a phone the library is a drawer. A tap outside it closes it. */}
+      <button className={"scrim" + (libOpen ? " on" : "")} tabIndex={-1} aria-hidden="true" onClick={closeLib} />
       <div className={"layout" + (libOpen ? "" : " collapsed")}>
         <Library
           papers={papers}
@@ -207,8 +277,13 @@ export default function App() {
           onSelect={openPaper}
           onChanged={refresh}
           notify={setNotice}
+          onClose={closeLib}
         />
         <main className="main" id="main" tabIndex={-1}>
+          {/* A page fades in and slides up a little when you change the tab. The chat is outside, so it stays mounted. */}
+          <AnimatePresence mode="wait" initial={false}>
+            {page !== "chat" && (
+              <motion.div key={page} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.1 } }} transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}>
           {page === "cards" &&
             (selected ? (
               <CardView
@@ -241,7 +316,7 @@ export default function App() {
                     <span className="n">1</span>
                     <div>
                       <strong>Add a PDF</strong>
-                      <span>Use the Library on the left. Write a focus topic if you need only one part.</span>
+                      <span>Use the Library. Write a focus topic if you need only one part.</span>
                     </div>
                   </li>
                   <li>
@@ -261,12 +336,6 @@ export default function App() {
                 </ol>
               </div>
             ))}
-          {/* The chat stays mounted, so the conversation is not lost when you open a card */}
-          {on("chat") && (
-            <div hidden={page !== "chat"}>
-              <Chat papers={papers} selectedId={selected} onOpenCard={openPaper} notify={setNotice} />
-            </div>
-          )}
           {page === "today" && <Today papers={papers} onAction={goAction} gameOn={on("game")} reviewOn={on("review")} questsOn={on("quests") && on("game")} planOn={on("plan")} onOpenReview={() => setTab("review")} notify={setNotice} />}
           {page === "review" && <Review notify={setNotice} />}
           {page === "write" && <Write notify={setNotice} onChanged={() => {}} gapsOn={on("gaps")} coachOn={on("coach")} />}
@@ -295,6 +364,15 @@ export default function App() {
               }}
               notify={setNotice}
             />
+          )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {/* The chat stays mounted, so the conversation is not lost when you open a card */}
+          {on("chat") && (
+            <div hidden={page !== "chat"}>
+              <Chat papers={papers} selectedId={selected} onOpenCard={openPaper} notify={setNotice} />
+            </div>
           )}
         </main>
       </div>

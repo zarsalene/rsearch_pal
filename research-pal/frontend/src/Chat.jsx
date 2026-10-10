@@ -146,7 +146,7 @@ export default function Chat({ papers, selectedId, onOpenCard, notify }) {
           <Icon name="doc" size={16} /> {live.length ? `${live.length} paper${live.length > 1 ? "s" : ""} selected` : "Select the papers"}
         </summary>
         {ready.length === 0 ? (
-          <p className="muted small">No paper is ready. Add a PDF on the left, then wait for its card.</p>
+          <p className="muted small">No paper is ready. Add a PDF in the Library, then wait for its card.</p>
         ) : (
           <>
             <div className="row pick-actions">

@@ -1,9 +1,11 @@
+import { AnimatePresence, motion, useDragControls } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
 
 const MAX_CHARS = 80;
 const MAX_WORDS = 5;
+const PHONE = "(max-width: 820px)";
 const BOX_HEIGHT = 260; // the height that the box needs at most, in pixels
 
 // Select a word or a short term in a card or in the chat. A small box says what it means.
@@ -15,34 +17,48 @@ export default function WordHelper({ paperId, notify, onSaved }) {
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
   const box = useRef(null);
+  const controls = useDragControls();
 
-  // Read the selection when the student lets go of the mouse. Only text inside an element with data-words counts.
+  // Read the selection. Only text inside an element with data-words counts.
+  // A mouse gives the selection when you let go of the button. A finger has no such event: the phone changes the selection
+  // with the handles, so there we wait a short time after the last change (selectionchange).
   useEffect(() => {
     if (!paperId) return;
+    const read = () => {
+      const s = window.getSelection();
+      const term = (s?.toString() || "").replace(/\s+/g, " ").trim();
+      const node = s?.anchorNode?.nodeType === 1 ? s.anchorNode : s?.anchorNode?.parentElement;
+      if (!s || s.isCollapsed || !term || term.length < 2 || term.length > MAX_CHARS || term.split(" ").length > MAX_WORDS || !node?.closest("[data-words]")) return;
+      const r = s.getRangeAt(0).getBoundingClientRect();
+      // The box goes under the word. It stays inside the window, so the buttons are always in reach.
+      const y = r.bottom + 8 + BOX_HEIGHT > window.innerHeight ? Math.max(8, window.innerHeight - BOX_HEIGHT - 8) : r.bottom + 8;
+      setSel((old) => (old?.term === term ? old : { term, x: Math.min(Math.max(r.left, 12), Math.max(12, window.innerWidth - 372)), y }));
+    };
     const onUp = (e) => {
       if (box.current?.contains(e.target)) return;
-      setTimeout(() => {
-        const s = window.getSelection();
-        const term = (s?.toString() || "").replace(/\s+/g, " ").trim();
-        const node = s?.anchorNode?.nodeType === 1 ? s.anchorNode : s?.anchorNode?.parentElement;
-        if (!s || s.isCollapsed || !term || term.length < 2 || term.length > MAX_CHARS || term.split(" ").length > MAX_WORDS || !node?.closest("[data-words]")) return;
-        const r = s.getRangeAt(0).getBoundingClientRect();
-        // The box goes under the word. It stays inside the window, so the buttons are always in reach.
-        const y = r.bottom + 8 + BOX_HEIGHT > window.innerHeight ? Math.max(8, window.innerHeight - BOX_HEIGHT - 8) : r.bottom + 8;
-        setSel({ term, x: Math.min(Math.max(r.left, 12), Math.max(12, window.innerWidth - 372)), y });
-      }, 0);
+      setTimeout(read, 0);
+    };
+    let timer = 0;
+    const onChange = () => {
+      clearTimeout(timer);
+      if (box.current?.contains(document.activeElement)) return;
+      timer = setTimeout(read, 450);
     };
     const onKey = (e) => e.key === "Escape" && setSel(null);
     const onDown = (e) => {
       if (box.current && !box.current.contains(e.target)) setSel(null);
     };
+    const touch = window.matchMedia("(pointer: coarse)").matches;
     document.addEventListener("mouseup", onUp);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    if (touch) document.addEventListener("selectionchange", onChange);
     return () => {
+      clearTimeout(timer);
       document.removeEventListener("mouseup", onUp);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("selectionchange", onChange);
     };
   }, [paperId]);
 
@@ -63,8 +79,6 @@ export default function WordHelper({ paperId, notify, onSaved }) {
     };
   }, [sel?.term, paperId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!sel) return null;
-
   const save = async () => {
     setBusy(true);
     try {
@@ -78,8 +92,30 @@ export default function WordHelper({ paperId, notify, onSaved }) {
     }
   };
 
+  const phone = typeof window !== "undefined" && window.matchMedia(PHONE).matches;
   return (
-    <div className="wordbox" ref={box} style={{ left: sel.x, top: sel.y }} role="dialog" aria-label={`Meaning of ${sel.term}`}>
+    <AnimatePresence>
+      {sel && (
+    <motion.div
+      key="wordbox"
+      className="wordbox"
+      ref={box}
+      style={{ left: sel.x, top: sel.y }}
+      role="dialog"
+      aria-label={`Meaning of ${sel.term}`}
+      initial={phone ? { y: "100%" } : { opacity: 0, y: 8, scale: 0.97 }}
+      animate={phone ? { y: 0 } : { opacity: 1, y: 0, scale: 1 }}
+      exit={phone ? { y: "100%" } : { opacity: 0, scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 380, damping: 36 }}
+      drag={phone ? "y" : false}
+      dragControls={controls}
+      dragListener={false}
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0, bottom: 0.7 }}
+      onDragEnd={(_, info) => (info.offset.y > 90 || info.velocity.y > 500) && setSel(null)}
+    >
+      {/* the grip: on a phone you pull it down to close the sheet */}
+      <div className="sheet-grip" onPointerDown={(e) => controls.start(e)} aria-hidden="true" />
       <div className="wordbox-head">
         <strong>{sel.term}</strong>
         <button className="iconbtn" onClick={() => setSel(null)} aria-label="Close the word box" title="Close (Esc)">
@@ -123,6 +159,8 @@ export default function WordHelper({ paperId, notify, onSaved }) {
           )}
         </>
       )}
-    </div>
+    </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

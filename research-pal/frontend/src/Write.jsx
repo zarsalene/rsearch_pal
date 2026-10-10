@@ -333,7 +333,7 @@ export default function Write({ notify, onChanged, gapsOn = false, coachOn = fal
               )}
             </>
           ) : (
-            <p className="muted">Choose a section on the left.</p>
+            <p className="muted">Choose a section.</p>
           )}
         </div>
 
