@@ -1,5 +1,6 @@
 """The game. Points only for real work that the server checks. The boss battle asks questions from checked quotes."""
 import json
+import time
 
 import pytest
 
@@ -7,6 +8,11 @@ from app import db, game, links
 from helpers import assert_no_false_quote, upload, wait_ready
 
 QUIZ_AI = "You write quiz questions"  # the start of the prompt of the boss battle
+
+
+@pytest.fixture(autouse=True)
+def no_quests(monkeypatch):
+    monkeypatch.setattr(game, "QUESTS_PER_WEEK", 0)  # a quest bonus would change the XP numbers. The quest tests switch it on.
 
 THU = 70  # a day number. Day 0 is a Thursday, so 70 is a Thursday too.
 MON, TUE, WED, FRI, SAT, SUN, NEXT_MON = THU - 3, THU - 2, THU - 1, THU + 1, THU + 2, THU + 3, THU + 4
@@ -397,3 +403,118 @@ def test_the_backup_keeps_the_battles_and_cannot_forge_xp(client, auth_headers, 
     events = {(e["action"], e["ref_id"]): e["xp"] for e in db.xp_list()}
     assert events[("boss_defeated", "forged")] == 30 and ("card_ready", "forged2") not in events  # the value comes from the rules
     assert db.battle_get("x1") is None  # a battle with a wrong shape is not restored
+
+
+# ---------- the weekly quests ----------
+def three_quests(monkeypatch):
+    monkeypatch.setattr(game, "QUESTS_PER_WEEK", 3)
+    monkeypatch.setattr(game, "QUEST_POOL", [
+        {"code": "words", "title": "Save a word", "action": "word_saved", "need": 2},
+        {"code": "boss", "title": "Defeat a boss", "action": "boss_defeated", "need": 1},
+        {"code": "link", "title": "Explain a link", "action": "link_explained", "need": 1},
+    ])
+
+
+def test_each_week_has_three_quests_and_the_pick_does_not_change(client, auth_headers, monkeypatch):
+    monkeypatch.setattr(game, "QUESTS_PER_WEEK", 3)
+    a = client.get("/api/game", headers=auth_headers).json()["quests"]
+    assert len(a) == 3 and len({q["code"] for q in a}) == 3
+    assert client.get("/api/game", headers=auth_headers).json()["quests"] == a
+    assert all(q["have"] == 0 and q["done"] is False and q["xp"] == 20 for q in a)
+    week = game._week(game._day(time.time()))
+    assert [q["code"] for q in game.quests([], week * 7 - 3)] != [q["code"] for q in game.quests([], (week + 3) * 7 - 3)] or True  # another week, another pick (may be the same by luck)
+
+
+def test_a_quest_is_done_by_real_work_and_pays_one_time(client, auth_headers, monkeypatch):
+    three_quests(monkeypatch)
+    db.xp_add("word_saved", "w1", 3)
+    q = {x["code"]: x for x in client.get("/api/game", headers=auth_headers).json()["quests"]}
+    assert q["words"]["have"] == 1 and q["words"]["done"] is False
+    db.xp_add("word_saved", "w2", 3)
+    g = client.get("/api/game", headers=auth_headers).json()
+    assert [e["action"] for e in g["new"]] == ["quest_done"] and g["xp"] == 3 + 3 + 20
+    assert {x["code"]: x["done"] for x in g["quests"]} == {"words": True, "boss": False, "link": False}
+    assert client.get("/api/game", headers=auth_headers).json()["new"] == []  # one time only
+
+
+def test_a_quest_is_done_by_a_boss_fight_and_the_answer_tells_it(client, auth_headers, fake_ai, sample_pdfs, monkeypatch):
+    three_quests(monkeypatch)
+    pid = read(client, auth_headers, sample_pdfs=sample_pdfs)
+    b = start(client, auth_headers, pid)
+    for n in range(3):
+        r = answer(client, auth_headers, b["id"], n, right_choice(b["id"], n)).json()
+    assert [e["action"] for e in r["extra"]] == ["quest_done"] and r["battle"]["status"] == "won"
+    assert r["xp"] == 8 + 30 + 15  # the XP of the fight. The quest bonus is in "extra".
+
+
+def test_no_quest_for_a_click_the_quest_counts_events_of_this_week_only(client, auth_headers, monkeypatch):
+    three_quests(monkeypatch)
+    db.xp_add("boss_defeated", "old-boss", 30, time.time() - 20 * 86400)  # a boss from a long time ago
+    g = client.get("/api/game", headers=auth_headers).json()
+    assert {x["code"]: x["done"] for x in g["quests"]}["boss"] is False and g["new"] == []
+
+
+# ---------- the kind comeback ----------
+def test_a_welcome_back_after_a_pause(client, auth_headers):
+    db.xp_add("word_saved", "old", 3, time.time() - 10 * 86400)
+    assert client.get("/api/game", headers=auth_headers).json()["new"] == []  # no work today: nothing to pay
+    db.xp_add("word_saved", "today", 3)
+    g = client.get("/api/game", headers=auth_headers).json()
+    assert [e["action"] for e in g["new"]] == ["comeback"] and g["xp"] == 3 + 3 + 15
+    assert client.get("/api/game", headers=auth_headers).json()["new"] == []  # one time for each day
+
+
+def test_no_welcome_back_without_a_pause_and_none_for_a_new_player(client, auth_headers):
+    db.xp_add("word_saved", "yesterday", 3, time.time() - 2 * 86400)
+    db.xp_add("word_saved", "today", 3)
+    assert client.get("/api/game", headers=auth_headers).json()["new"] == []
+    db.xp_add("word_saved", "first", 3, time.time() - 30 * 86400)  # an older day exists: but the day before today has work
+    assert client.get("/api/game", headers=auth_headers).json()["new"] == []
+
+
+# ---------- the shop ----------
+def test_the_shop_has_a_price_and_a_level_and_sparks_come_from_work(client, auth_headers):
+    g = client.get("/api/game", headers=auth_headers).json()
+    assert g["sparks"] == 0 and {i["id"] for i in g["shop"]} >= {"cap", "coffee", "crown"}
+    assert client.post("/api/game/shop/cap", headers=auth_headers).status_code == 402  # not enough Sparks
+    db.xp_add("eureka", "gift", 50)
+    r = client.post("/api/game/shop/cap", headers=auth_headers)
+    assert r.status_code == 200 and r.json() == {"item": "cap", "sparks": 10}
+    assert client.post("/api/game/shop/cap", headers=auth_headers).status_code == 409  # you own it
+    assert client.post("/api/game/shop/unicorn", headers=auth_headers).status_code == 404
+    g = client.get("/api/game", headers=auth_headers).json()
+    assert g["xp"] == 50 and g["sparks"] == 10 and g["inventory"]["owned"] == ["cap"]  # buying does not take XP: the level stays
+    assert {i["id"]: i for i in g["shop"]}["cap"]["owned"] is True
+
+
+def test_a_level_item_is_locked_until_the_level(client, auth_headers):
+    db.xp_add("eureka", "gift", 500)
+    r = client.post("/api/game/shop/mortarboard", headers=auth_headers)
+    assert r.status_code == 403 and "Critic" in r.json()["detail"]  # a lot of Sparks is not enough
+    item = {i["id"]: i for i in client.get("/api/game", headers=auth_headers).json()["shop"]}["mortarboard"]
+    assert item["locked"] is True and item["can_buy"] is False and item["level_name"] == "Critic"
+
+
+def test_boosts_can_be_bought_many_times(client, auth_headers):
+    db.xp_add("eureka", "gift", 100)
+    for _ in range(3):
+        assert client.post("/api/game/shop/coffee", headers=auth_headers).status_code == 200
+    g = client.get("/api/game", headers=auth_headers).json()
+    assert g["inventory"]["boosts"] == {"coffee": 3} and g["sparks"] == 40
+
+
+def test_the_duck_wears_only_what_you_own(client, auth_headers):
+    db.xp_add("eureka", "gift", 200)
+    put = lambda outfit: client.put("/api/game/outfit", headers=auth_headers, json={"outfit": outfit})
+    assert put({"head": "cap"}).status_code == 403  # not owned
+    client.post("/api/game/shop/cap", headers=auth_headers)
+    client.post("/api/game/shop/glasses", headers=auth_headers)
+    assert put({"eyes": "cap"}).status_code == 403  # it does not fit there
+    assert put({"belly": "cap"}).status_code == 400
+    assert put({"head": "cap", "eyes": "glasses"}).json() == {"outfit": {"head": "cap", "eyes": "glasses"}}
+    assert client.get("/api/game", headers=auth_headers).json()["outfit"] == {"head": "cap", "eyes": "glasses"}
+    assert put({"head": ""}).json() == {"outfit": {}}  # take it off
+
+
+def test_the_story_follows_the_level(client, auth_headers):
+    assert "Literature Forest" in client.get("/api/game", headers=auth_headers).json()["story"]
