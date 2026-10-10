@@ -1,7 +1,8 @@
 # Builds a signed release APK that you can install on a phone. Start it by hand (Actions > Android APK > Run workflow) or by a push that changes this file.
 # The server address is the repository variable API_URL. If it is not set, the Render address below is used.
 # The signing key comes from 4 secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
-# For the sign-in with Supabase, set the repository variable SUPABASE_ANON_KEY (the public anon key).
+# The sign-in with Supabase uses the public anon key. It is public by design (it is in every web app that uses Supabase).
+# The repository variable SUPABASE_ANON_KEY replaces it, if you set one.
 name: Android APK
 
 on:
@@ -26,7 +27,7 @@ jobs:
     env:
       VITE_API_URL: ${{ vars.API_URL || 'https://research-pal-api.onrender.com' }}
       VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://iqqqearogsjtplheugsk.supabase.co' }}
-      VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+      VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxcXFlYXJvZ3NqdHBsaGV1Z3NrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjEwODUsImV4cCI6MjEwNzEzNzA4NX0.yWEUdk5GhdfBaF3VD2LQ5ZaNoAhS6y9ILYANaWLDvPA' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
