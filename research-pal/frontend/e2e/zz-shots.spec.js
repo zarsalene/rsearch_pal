@@ -44,7 +44,7 @@ test.describe.serial("screenshots", () => {
     const papers = await signInAndLoad(page);
     if (papers.length) await page.getByRole("button", { name: "Add paper" }).click();
     await page.locator('input[type="file"]').setInputFiles(PDF);
-    await page.getByRole("button", { name: "Read the paper" }).click();
+    await page.getByRole("button", { name: "Read the paper", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1 })).toContainText("AUTOMA");
     await expect(page.getByRole("button", { name: "Fight the boss" })).toBeVisible();
     await page.waitForTimeout(1500);

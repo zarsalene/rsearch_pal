@@ -3,9 +3,19 @@
   "appName": "Research Pal",
   "webDir": "dist",
   "backgroundColor": "#0B0B0E",
-  "android": { "allowMixedContent": false },
+  "android": {
+    "allowMixedContent": false
+  },
   "plugins": {
-    "SplashScreen": { "launchShowDuration": 0, "backgroundColor": "#0E1230" },
-    "StatusBar": { "overlaysWebView": false }
+    "SplashScreen": {
+      "launchShowDuration": 0,
+      "backgroundColor": "#0E1230"
+    },
+    "StatusBar": {
+      "overlaysWebView": false
+    },
+    "CapacitorHttp": {
+      "enabled": true
+    }
   }
 }
