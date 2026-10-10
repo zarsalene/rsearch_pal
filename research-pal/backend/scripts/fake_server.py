@@ -29,6 +29,13 @@ from pdfs import PAPERS, make_pdf
 
 llm.chat_json = FakeAI()  # every module calls llm.chat_json, so this one line replaces the AI
 
+try:
+    import chromadb  # noqa: F401  CI has it: the browser tests then use the real search index
+except ImportError:  # a computer without it: use the small index in memory that the unit tests use
+    from app import vectors
+    from fake_vectors import FakeIndex
+    vectors._col = FakeIndex().col
+
 if args.pdf_dir:
     out = Path(args.pdf_dir)
     out.mkdir(parents=True, exist_ok=True)

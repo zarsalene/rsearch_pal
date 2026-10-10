@@ -12,14 +12,23 @@ async function signIn(page) {
   await expect(page.getByRole("tab", { name: "Settings" })).toBeVisible();
 }
 
+// Sign in and wait for the list of papers. The answer says if the library has a paper already (the other spec file uploads one).
+async function signInAndLoad(page) {
+  const loaded = page.waitForResponse((r) => r.url().endsWith("/api/papers") && r.request().method() === "GET");
+  await signIn(page);
+  return (await loaded).json();
+}
+
 // The fake AI of the test server writes one question for each checked quote. The right answer is the first words of the quote.
 const RIGHT = /Analysts spend many hours|Our system uses a hypothesis|AUTOMA reaches a precision/;
 
 test.describe.serial("The game", () => {
   test("fight the boss of a paper: the questions come from checked quotes, and the win is shown", async ({ page }) => {
-    await signIn(page);
-    await page.locator('input[type="file"]').setInputFiles(PDF);
-    await page.getByRole("button", { name: "Read the paper" }).click();
+    const papers = await signInAndLoad(page);
+    if (!papers.length) {
+      await page.locator('input[type="file"]').setInputFiles(PDF);
+      await page.getByRole("button", { name: "Read the paper" }).click();
+    }
     await expect(page.getByRole("heading", { level: 1 })).toContainText("AUTOMA: Multi-agent threat hunting");
 
     await page.getByRole("button", { name: "Fight the boss" }).click();
@@ -77,7 +86,8 @@ test.describe.serial("The game", () => {
     await page.getByRole("button", { name: /End the week/ }).click();
     // an event may come at the end of the week. The student answers it, and the next week starts.
     const event = page.locator(".event");
-    if (await event.isVisible({ timeout: 3000 }).catch(() => false)) await event.getByRole("button").first().click();
+    await expect(event.or(page.getByText("Week 2", { exact: false }).first())).toBeVisible();
+    if (await event.isVisible()) await event.getByRole("button").first().click();
     await expect(page.getByText("Week 2", { exact: false }).first()).toBeVisible();
     await expect(page.getByText(/\d action points/)).toBeVisible();
   });
