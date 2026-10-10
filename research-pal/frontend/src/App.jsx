@@ -280,10 +280,11 @@ export default function App() {
           onClose={closeLib}
         />
         <main className="main" id="main" tabIndex={-1}>
-          {/* A page fades in and slides up a little when you change the tab. The chat is outside, so it stays mounted. */}
-          <AnimatePresence mode="wait" initial={false}>
+          {/* A page fades in and slides up a little when you change the tab. The old page goes away at once (no exit animation),
+              so two pages are never in the page at the same time. The chat is outside, so it stays mounted. */}
+          <>
             {page !== "chat" && (
-              <motion.div key={page} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6, transition: { duration: 0.1 } }} transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}>
+              <motion.div key={page} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}>
           {page === "cards" &&
             (selected ? (
               <CardView
@@ -367,7 +368,7 @@ export default function App() {
           )}
               </motion.div>
             )}
-          </AnimatePresence>
+          </>
           {/* The chat stays mounted, so the conversation is not lost when you open a card */}
           {on("chat") && (
             <div hidden={page !== "chat"}>
