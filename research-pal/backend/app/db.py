@@ -2,8 +2,9 @@
 One-user mode and tests: SQLite.
 Multi-user mode (SUPABASE_URL + DATABASE_URL): Postgres on Supabase. Each user has a schema of his own ("u_<user id>") with all the tables.
 A user can only reach his own schema, so a query can never read the data of another user. The SQL below is the same for both."""
-import json, re, sqlite3, threading, time, uuid
+import copy, functools, json, re, sqlite3, threading, time, uuid
 from contextlib import contextmanager
+from contextvars import ContextVar
 
 from . import auth, config
 
@@ -203,14 +204,23 @@ class _Cur:
         return iter(self.fetchall())
 
 
+# A read (SELECT) is sent with the settings of the schema in ONE message. The server runs them as one small transaction, so a read costs ONE trip.
+# The first write starts a real transaction (BEGIN in the same message) and the end of the block commits it.
+# Before this, each block cost three trips (BEGIN, the query, COMMIT). A trip to Supabase is about 170 ms, so a block was half a second.
+_IS_READ = re.compile(r"^\s*SELECT\b", re.I)
+_LOCKS_ROWS = re.compile(r"\bFOR\s+(NO\s+KEY\s+)?(UPDATE|SHARE|KEY\s+SHARE)\b", re.I)
+
+
 class _PgConn:
-    """Gives Postgres the same small interface as SQLite: execute(sql, params) with ? marks, and rows that work like dicts."""
+    """Gives Postgres the same small interface as SQLite: execute(sql, params) with ? marks, and rows that work like dicts.
+    The connection is in autocommit mode. A transaction is open only after the first write (self.txn)."""
 
     def __init__(self, raw, schema: str):
         self.raw = raw
         # extra_float_digits=3: Postgres gives a time stamp with all its digits. Without it, a value that comes back is a little different.
         self.path = f'SET LOCAL search_path TO "{schema}", public, extensions; SET LOCAL extra_float_digits = 3'
-        self._set = False
+        self.txn = False  # a transaction is open on the server
+        self.wrote = False  # this block changed data
 
     @staticmethod
     def _sql(sql: str) -> str:
@@ -220,23 +230,42 @@ class _PgConn:
         sql = sql.replace("FROM sqlite_master WHERE type='table' AND name=", "FROM information_schema.tables WHERE table_schema=current_schema() AND table_name=")
         return sql.replace("%", "%%").replace("?", "%s")
 
-    def _prefix(self) -> str:
-        if self._set:
-            return ""
-        self._set = True
-        return self.path + "; "
+    def _text(self, sql: str) -> str:
+        """The text for ONE message to the server."""
+        if self.txn:  # the settings of the transaction (SET LOCAL) are still valid
+            return sql
+        if _IS_READ.match(sql) and not _LOCKS_ROWS.search(sql):
+            return self.path + "; " + sql
+        self.txn = self.wrote = True
+        return "BEGIN; " + self.path + "; " + sql
 
     def execute(self, sql: str, params=()):
         cur = self.raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(self._prefix() + self._sql(sql), tuple(params))
+        cur.execute(self._text(self._sql(sql)), tuple(params))
         return _Cur(cur)
 
     def executemany(self, sql: str, rows) -> None:
         cur = self.raw.cursor()
-        pre = self._prefix()
-        if pre:
-            cur.execute(pre.rstrip("; "))
+        if not self.txn:
+            cur.execute("BEGIN; " + self.path)
+            self.txn = self.wrote = True
         psycopg2.extras.execute_batch(cur, self._sql(sql), list(rows))
+
+    def commit(self) -> None:
+        if self.txn:
+            self.raw.cursor().execute("COMMIT")
+            self.txn = False
+
+    def rollback(self) -> None:
+        if self.txn:
+            self.txn = False
+            try:
+                self.raw.cursor().execute("ROLLBACK")
+            except Exception:
+                try:
+                    self.raw.close()  # the connection is broken: the pool throws it away
+                except Exception:
+                    pass
 
 
 def _get_pool():
@@ -251,8 +280,8 @@ def _checkout(pool):
     raw = pool.getconn()
     if raw.closed or time.time() - _last_used.get(id(raw), 0) > 30:  # a long-idle connection may be closed by the server
         try:
+            raw.autocommit = True  # one trip for the check (without it: BEGIN, SELECT, ROLLBACK)
             raw.cursor().execute("SELECT 1")
-            raw.rollback()
         except Exception:
             pool.putconn(raw, close=True)
             raw = pool.getconn()
@@ -266,6 +295,7 @@ def _pg_prepare(pool, schema: str) -> None:
             return
         raw = _checkout(pool)
         try:
+            raw.autocommit = False  # the lock and the SET LOCAL below need one real transaction
             cur = raw.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (schema,))
             cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
@@ -296,6 +326,52 @@ class _PgConnPrepared:
         return _Cur(self.cur)
 
 
+# ---------- a memory for ONE request ----------
+# Inside one request the same small reads come again and again (a setting, the project, the list of papers). Each one costs a trip to the database.
+# The first read goes to the database. The repeats come from this memory. Any write clears it, so the data is never old after a change.
+# The memory is open only while the endpoint runs: it closes when the answer starts, so a background job never uses it.
+_memo: ContextVar = ContextVar("rp_db_memo", default=None)
+
+
+def memo_open():
+    box = {"on": True, "values": {}}
+    return box, _memo.set(box)
+
+
+def memo_close(box, token) -> None:
+    box["on"] = False
+    box["values"].clear()
+    try:
+        _memo.reset(token)
+    except ValueError:
+        pass
+
+
+def memo_clear() -> None:
+    box = _memo.get()
+    if box:
+        box["values"].clear()
+
+
+def cached_read(fn):
+    """For a function that only reads. Inside one request, the same call (same arguments) asks the database one time."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        box = _memo.get()
+        if not box or not box["on"]:
+            return fn(*args, **kwargs)
+        try:
+            key = (fn.__name__, args, tuple(sorted(kwargs.items())))
+            hash(key)
+        except TypeError:
+            return fn(*args, **kwargs)
+        values = box["values"]
+        if key not in values:
+            values[key] = fn(*args, **kwargs)
+        return copy.deepcopy(values[key])  # a caller may change the list that it gets, so each caller gets its own copy
+    return wrapper
+
+
 @contextmanager
 def conn():
     if config.USE_PG:
@@ -304,18 +380,24 @@ def conn():
         if schema not in _ready:
             _pg_prepare(pool, schema)
         raw = _checkout(pool)
+        raw.autocommit = True
+        pg = _PgConn(raw, schema)
         try:
             try:
-                yield _PgConn(raw, schema)
-                raw.commit()
+                yield pg
+                pg.commit()
             except BaseException:
-                try:
-                    raw.rollback()
-                except Exception:
-                    pass
+                pg.rollback()
                 raise
         finally:
+            if pg.wrote:
+                memo_clear()
             _last_used[id(raw)] = time.time()
+            if not raw.closed:
+                try:
+                    raw.autocommit = False
+                except Exception:
+                    raw.close()
             pool.putconn(raw, close=bool(raw.closed))
         return
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -324,8 +406,13 @@ def conn():
     try:
         with _lock:
             _sqlite_ready(c)
-            yield c
-            c.commit()
+            changes = c.total_changes
+            try:
+                yield c
+                c.commit()
+            finally:
+                if c.total_changes != changes:
+                    memo_clear()
     finally:
         c.close()
 
@@ -385,6 +472,7 @@ def get_paper(pid: str):
     return dict(r) if r else None
 
 
+@cached_read
 def list_papers():
     with conn() as c:
         rows = c.execute("SELECT p.*, c.data AS card FROM papers p LEFT JOIN cards c ON c.paper_id=p.id ORDER BY p.created_at DESC").fetchall()
@@ -416,6 +504,7 @@ def save_card(pid: str, card: dict) -> None:
                   (pid, json.dumps(card, ensure_ascii=False), time.time()))
 
 
+@cached_read
 def get_card(pid: str):
     with conn() as c:
         r = c.execute("SELECT data FROM cards WHERE paper_id=?", (pid,)).fetchone()
@@ -463,6 +552,7 @@ def get_extra(pid: str, cid: str):
     return _extra_row(r) if r else None
 
 
+@cached_read
 def list_extra(pid: str) -> list[dict]:
     with conn() as c:
         rows = c.execute("SELECT * FROM extra_cards WHERE paper_id=? ORDER BY created_at", (pid,)).fetchall()
@@ -528,6 +618,7 @@ STAGES = {"": "Not set", "year_1": "Year 1", "year_2_3": "Year 2-3", "final_year
 MAX_SUB_QUESTIONS = 10
 
 
+@cached_read
 def get_project() -> dict:
     with conn() as c:
         r = c.execute("SELECT title, question, stage, updated_at FROM project WHERE id=1").fetchone()
@@ -559,6 +650,7 @@ def project_history() -> list[dict]:
         return [dict(r) for r in c.execute("SELECT id, field, old_value, new_value, changed_at FROM project_history ORDER BY id DESC")]
 
 
+@cached_read
 def list_sub_questions() -> list[dict]:
     with conn() as c:
         return [dict(r) for r in c.execute("SELECT id, text, position FROM sub_questions ORDER BY position, rowid")]
@@ -610,6 +702,7 @@ def set_tags(pid: str, card_id: str, sub_question_ids: list[str]) -> None:
         c.executemany("INSERT INTO paper_tags(paper_id,card_id,sub_question_id) VALUES(?,?,?)", [(pid, card_id, s) for s in dict.fromkeys(sub_question_ids)])
 
 
+@cached_read
 def all_tags() -> dict[str, dict[str, list[str]]]:
     """{paper id: {card id: [sub-question ids]}}. The ids follow the order of the sub-questions."""
     out: dict[str, dict[str, list[str]]] = {}
@@ -621,6 +714,7 @@ def all_tags() -> dict[str, dict[str, list[str]]]:
     return out
 
 
+@cached_read
 def coverage() -> dict:
     """For each sub-question: the number of papers with a tag (a paper counts one time, also with several tagged cards)."""
     with conn() as c:
@@ -681,6 +775,7 @@ def gap_set_status(gid: str, status: str) -> None:
         c.execute("UPDATE gaps SET status=? WHERE id=?", (status, gid))
 
 
+@cached_read
 def gaps_confirmed() -> int:
     with conn() as c:
         return c.execute("SELECT COUNT(*) AS n FROM gaps WHERE status='confirmed'").fetchone()["n"]
@@ -704,6 +799,7 @@ def critiques_all() -> list[dict]:
     return [critique_get(i) for i in ids]  # outside the lock: the lock is not reentrant
 
 
+@cached_read
 def critiques_done() -> int:
     """Checks that the student edited or confirmed. They count for the level Critic."""
     with conn() as c:
@@ -711,6 +807,7 @@ def critiques_done() -> int:
 
 
 # ---------- literature review: one document, sections, the words of each day (Sprint 08) ----------
+@cached_read
 def review_doc() -> dict:
     with conn() as c:
         r = c.execute("SELECT * FROM review_doc ORDER BY rowid LIMIT 1").fetchone()
@@ -726,6 +823,7 @@ def review_doc_title(title: str) -> None:
         c.execute("UPDATE review_doc SET title=?, updated_at=? WHERE id=?", (title, now(), d["id"]))
 
 
+@cached_read
 def review_sections(doc_id: str) -> list[dict]:
     with conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM review_sections WHERE doc_id=? ORDER BY position, rowid", (doc_id,))]
@@ -784,11 +882,13 @@ def words_on(date: str) -> int:
 
 
 # ---------- quests, bosses, activity (Sprint 07) ----------
+@cached_read
 def quests_week(week: str) -> list[dict]:
     with conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM quests_active WHERE week=? ORDER BY rowid", (week,))]
 
 
+@cached_read
 def quests_recent_offers(week: str, weeks: int = 3) -> list[dict]:
     """The quests that were offered in the last weeks (not this week). The picker puts them last, so the offers change."""
     with conn() as c:
@@ -863,11 +963,13 @@ def xp_add(action: str, ref_id: str, xp: int, when: float, date: str) -> bool:
         return c.execute("INSERT OR IGNORE INTO xp_events(id,time,date,action,ref_id,xp) VALUES(?,?,?,?,?,?)", (new_id(), when, date, action, ref_id, xp)).rowcount > 0
 
 
+@cached_read
 def xp_total() -> int:
     with conn() as c:
         return c.execute("SELECT COALESCE(SUM(xp),0) AS n FROM xp_events").fetchone()["n"]
 
 
+@cached_read
 def xp_counts() -> dict[str, int]:
     with conn() as c:
         return {r["action"]: r["n"] for r in c.execute("SELECT action, COUNT(*) AS n FROM xp_events GROUP BY action")}
@@ -904,6 +1006,7 @@ def badge_add(code: str, when: float) -> bool:
         return c.execute("INSERT OR IGNORE INTO badges(id,code,earned_at) VALUES(?,?,?)", (new_id(), code, when)).rowcount > 0
 
 
+@cached_read
 def badges_list() -> list[dict]:
     with conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM badges ORDER BY earned_at, rowid")]
@@ -956,6 +1059,7 @@ def badge_restore(code: str, when: float) -> None:
 
 
 # ---------- goals, wins and focus sessions (the Today page) ----------
+@cached_read
 def goals_list(date: str) -> list[dict]:
     """The goals of one day. A goal of the kind "words" shows the words that you wrote in the literature review today."""
     with conn() as c:
@@ -1002,6 +1106,7 @@ def win_add(date: str, text: str, wid: str | None = None, created_at: float | No
         return dict(c.execute("SELECT * FROM wins WHERE id=?", (wid,)).fetchone())
 
 
+@cached_read
 def wins_list(limit: int = 50, date: str | None = None, before: str | None = None) -> list[dict]:
     """The newest first. date: only this day. before: only the days before this date."""
     q, args = "SELECT * FROM wins WHERE 1=1", []
@@ -1134,6 +1239,7 @@ def review_get(rid: str):
     return dict(r) if r else None
 
 
+@cached_read
 def review_list(paper_id: str | None = None, kind: str | None = None) -> list[dict]:
     q, args = "SELECT * FROM review_items WHERE 1=1", []
     if paper_id is not None:
@@ -1172,6 +1278,7 @@ def review_restore_state(row: dict) -> bool:
         return True
 
 
+@cached_read
 def xp_events_of(action: str) -> list[dict]:
     with conn() as c:
         return [dict(r) for r in c.execute("SELECT id, date, ref_id, xp FROM xp_events WHERE action=?", (action,))]
@@ -1245,15 +1352,42 @@ def get_feature(name: str):
     return None if r is None else bool(r["enabled"])
 
 
+# The choices of a student are read in ONE query, and they stay in memory for a short time. Almost each request asks if a feature is on,
+# and each question to the database costs a trip to Supabase. Writing a switch clears the memory.
+_FEATURES: dict[tuple, tuple[float, dict[str, bool]]] = {}
+_FEATURES_TTL = 30.0
+
+
+def _features_key() -> tuple:
+    return (auth.current_user(), "pg" if config.USE_PG else str(config.DB_PATH))
+
+
+def list_features() -> dict[str, bool]:
+    """All the choices of the student in ONE query (the list of features used to ask the database once for each feature)."""
+    key = _features_key()
+    hit = _FEATURES.get(key)
+    if hit and time.time() - hit[0] < _FEATURES_TTL:
+        return dict(hit[1])
+    with conn() as c:
+        rows = c.execute("SELECT name, enabled FROM features").fetchall()
+    saved = {r["name"]: bool(r["enabled"]) for r in rows}
+    if len(_FEATURES) > 500:
+        _FEATURES.clear()
+    _FEATURES[key] = (time.time(), saved)
+    return dict(saved)
+
+
 def set_feature(name: str, enabled: bool) -> None:
     with conn() as c:
         c.execute("INSERT INTO features(name,enabled) VALUES(?,?) ON CONFLICT(name) DO UPDATE SET enabled=excluded.enabled", (name, int(enabled)))
+    _FEATURES.pop(_features_key(), None)
 
 
 def _ensure_settings_table() -> None:
     """The table is in the schema. This function stays, so the callers do not change."""
 
 
+@cached_read
 def get_setting(key: str, default: str = "") -> str:
     _ensure_settings_table()
     with conn() as c:
@@ -1292,16 +1426,19 @@ def play_rounds_all() -> list[dict]:
         return [{**dict(r), "questions": json.loads(r["questions_json"])} for r in c.execute("SELECT * FROM play_rounds ORDER BY created_at")]
 
 
+@cached_read
 def play_coins_on(date: str) -> int:
     with conn() as c:
         return c.execute("SELECT COALESCE(SUM(coins),0) AS n FROM play_rounds WHERE finished=1 AND date=?", (date,)).fetchone()["n"]
 
 
+@cached_read
 def play_coins_total() -> int:
     with conn() as c:
         return c.execute("SELECT COALESCE(SUM(coins),0) AS n FROM play_rounds WHERE finished=1").fetchone()["n"]
 
 
+@cached_read
 def play_items_list() -> list[dict]:
     with conn() as c:
         return [dict(r) for r in c.execute("SELECT * FROM play_items ORDER BY bought_at")]
@@ -1317,6 +1454,7 @@ def play_item_place(code: str, x: int, y: int) -> None:
         c.execute("UPDATE play_items SET x=?, y=? WHERE code=?", (x, y, code))
 
 
+@cached_read
 def play_review_material() -> list[dict]:
     """Quiz questions and glossary words from the papers: the rows that have a quote."""
     with conn() as c:
@@ -1371,6 +1509,7 @@ def to_read_get(rid: str):
     return _to_read_row(r) if r else None
 
 
+@cached_read
 def to_read_list(status: str | None = None) -> list[dict]:
     with conn() as c:
         rows = c.execute("SELECT * FROM to_read WHERE status=? ORDER BY score DESC, added_at", (status,)) if status else c.execute("SELECT * FROM to_read ORDER BY score DESC, added_at")

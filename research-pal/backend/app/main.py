@@ -23,6 +23,33 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Research_Pal", lifespan=lifespan)
+
+
+class RequestMemory:
+    """The memory for one request (see db.cached_read). It opens when the request starts. It closes when the answer starts,
+    so the background job that runs after the answer never uses it, and the data is never old."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.inner(scope, receive, send)
+        box, token = db.memo_open()
+
+        async def send_and_close(message):
+            if message["type"] == "http.response.start":
+                box["on"] = False
+                box["values"].clear()
+            await send(message)
+
+        try:
+            await self.inner(scope, receive, send_and_close)
+        finally:
+            db.memo_close(box, token)
+
+
+app.add_middleware(RequestMemory)
 app.add_middleware(
     CORSMiddleware, allow_origins=config.FRONTEND_ORIGINS, allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],

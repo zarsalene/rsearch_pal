@@ -32,15 +32,20 @@ REGISTRY: dict[str, dict] = {
 }
 
 
+def _saved() -> dict[str, bool]:
+    return db.list_features()  # one query, and it stays in memory for a short time (see db.py)
+
+
 def is_enabled(name: str) -> bool:
     if name not in REGISTRY:
         return False
-    saved = db.get_feature(name)
+    saved = _saved().get(name)
     return REGISTRY[name]["default"] if saved is None else saved
 
 
 def listing() -> list[dict]:
-    return [{"name": n, "label": f["label"], "description": f["description"], "enabled": is_enabled(n)} for n, f in REGISTRY.items()]
+    saved = _saved()
+    return [{"name": n, "label": f["label"], "description": f["description"], "enabled": f["default"] if saved.get(n) is None else saved[n]} for n, f in REGISTRY.items()]
 
 
 def set_many(changes: dict[str, bool]) -> None:
