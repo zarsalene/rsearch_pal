@@ -140,6 +140,7 @@ export default function App() {
               role="tab"
               aria-selected={tab === k}
               aria-label={label}
+              title={label}
               onClick={() => {
                 setTab(k);
                 tap();

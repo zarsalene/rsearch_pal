@@ -39,8 +39,8 @@ function Eyes({ mood }) {
       </g>
       {mood === "oops" && (
         <g stroke={INK} strokeWidth="2.4" strokeLinecap="round">
-          <path d="M44 30 l9 3" />
-          <path d="M76 30 l-9 3" />
+          <path d="M44 33 l9 -3" />
+          <path d="M76 33 l-9 -3" />
         </g>
       )}
     </g>

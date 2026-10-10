@@ -12,6 +12,8 @@ const W = 800;
 const H = 520;
 const RANK_NAME = ["Seen", "Read", "Explained", "Mastered"];
 const key = (e) => [e.source, e.target].sort().join(":");
+// Where on the line the mark sits (40% to 60%). Two links that cross near the same point do not put their marks on top of each other.
+const along = (e) => 0.4 + ([...key(e)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 21) / 100;
 
 export default function FogMap({ notify }) {
   const id = useId().replace(/:/g, "");
@@ -123,8 +125,9 @@ export default function FogMap({ notify }) {
           const a = pos[e.source];
           const b = pos[e.target];
           if (!a || !b) return null;
-          const x = (a.x + b.x) / 2;
-          const y = (a.y + b.y) / 2;
+          const t = along(e);
+          const x = a.x + (b.x - a.x) * t;
+          const y = a.y + (b.y - a.y) * t;
           const label = e.state === "fog" ? "Unexplored link. Explore it." : e.state === "found" ? "Found link. Show it." : "Unclear link. Show it.";
           return (
             <g key={key(e)} className={"fmark " + e.state + (sel === key(e) ? " sel" : "")} transform={`translate(${x},${y})`} tabIndex={0} role="button" aria-label={`${label} ${title[e.source]} and ${title[e.target]}`} onClick={() => pick(e)} onKeyDown={(ev) => ev.key === "Enter" && pick(e)}>
