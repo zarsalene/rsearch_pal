@@ -8,6 +8,7 @@ import "@fontsource-variable/source-serif-4";
 import "./styles.css";
 import "./simple-words.css";
 import "./mobile.css";
+import "./game.css";
 
 // reducedMotion="user": if the phone says "reduce motion" in its settings, the movements are off and only the fades stay.
 createRoot(document.getElementById("root")).render(

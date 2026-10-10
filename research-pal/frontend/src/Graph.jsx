@@ -14,7 +14,7 @@ const RELATION = {
 const edgeKey = (e) => [e.source, e.target].sort().join(":");
 
 // The AI explains one link. Each claim has a quote that the server found in the PDF.
-function Explain({ state, onAgain, notify }) {
+export function Explain({ state, onAgain, notify }) {
   if (!state || state.loading) {
     return (
       <div className="progress" role="status">
@@ -77,7 +77,7 @@ function Explain({ state, onAgain, notify }) {
 const W = 800,
   H = 520;
 
-function layout(nodes, edges) {
+export function layout(nodes, edges) {
   const n = nodes.length;
   if (!n) return {};
   const pos = nodes.map((_, i) => ({ x: W / 2 + Math.cos((2 * Math.PI * i) / n) * H * 0.34, y: H / 2 + Math.sin((2 * Math.PI * i) / n) * H * 0.34, vx: 0, vy: 0 }));

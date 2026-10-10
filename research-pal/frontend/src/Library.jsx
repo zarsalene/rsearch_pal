@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
+import { useApp } from "./store.js";
 
 const VERDICT = { read: "Read it", skim: "Skim it", skip: "Skip it" };
 
@@ -15,6 +16,7 @@ function statusText(p) {
 export default function Library({ papers, selectedId, config, onSelect, onChanged, notify, onClose }) {
   const side = useRef(null);
   const drag = useRef(null);
+  const ranks = useApp((s) => s.game?.ranks); // the rank of each paper in the card collection (see game.py)
   // On a phone you can push the drawer to the left to close it. The drawer follows the finger (no React state, so it stays smooth).
   const onTouchStart = (e) => {
     if (!window.matchMedia("(max-width: 820px)").matches) return;
@@ -142,7 +144,15 @@ export default function Library({ papers, selectedId, config, onSelect, onChange
           <motion.li key={p.id} layout="position" initial={{ opacity: 0, x: -14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -14 }} transition={{ type: "spring", stiffness: 320, damping: 30, delay: Math.min(i, 8) * 0.03 }}>
             <button className={"pitem" + (p.id === selectedId ? " sel" : "")} onClick={() => onSelect(p.id)}>
               <span className="ptitle">{p.title || p.filename}</span>
-              <span className={"pstat s-" + (p.status === "ready" ? p.verdict || "ready" : p.status)}>{statusText(p)}</span>
+              <span className={"pstat s-" + (p.status === "ready" ? p.verdict || "ready" : p.status)}>
+                {statusText(p)}
+                {ranks?.[p.id] > 0 && (
+                  <span className={"rankpip r" + ranks[p.id]} title={["", "Read", "Explained", "Mastered: you defeated the boss"][ranks[p.id]]}>
+                    <Icon name={ranks[p.id] === 3 ? "crown" : "star"} size={12} weight="fill" />
+                    {ranks[p.id] === 2 && <Icon name="star" size={12} weight="fill" />}
+                  </span>
+                )}
+              </span>
               {p.focus && (
                 <span className="pfocus">
                   <Icon name="target" size={12} /> {p.focus}

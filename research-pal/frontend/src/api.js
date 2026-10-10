@@ -91,6 +91,8 @@ async function request(path, { method = "GET", json, form, raw } = {}) {
     } catch {}
     throw new Error(msg);
   }
+  // Work changed on the server (a note, a link, a word ...). The game looks again, to see if the work earned XP.
+  if (method !== "GET" && !/^\/api\/(game|battles|sim)/.test(path) && typeof window !== "undefined") window.dispatchEvent(new Event("rp-work"));
   return raw ? res : res.json();
 }
 
@@ -168,6 +170,22 @@ export const api = {
   // Choose the AI: { primary, fallbacks: [], models: { provider: "model name" } }. The keys stay on the server.
   setAi: (choice) => request("/api/ai", { method: "PUT", json: choice }),
   resetAi: () => request("/api/ai", { method: "DELETE" }),
+  // The game. The page sends choices only. XP, damage, odds and prices are decided on the server.
+  game: () => request(`/api/game?tz=${-new Date().getTimezoneOffset()}`),
+  setGameSettings: (weekend_off) => request("/api/game/settings", { method: "PUT", json: { weekend_off } }),
+  collection: () => request("/api/game/collection"),
+  gameMap: () => request("/api/game/map"),
+  startBattle: (id) => request(`/api/papers/${id}/battle`, { method: "POST" }),
+  answerBattle: (id, n, choice) => request(`/api/battles/${id}/answer`, { method: "POST", json: { n, choice } }),
+  buy: (item) => request(`/api/game/shop/${item}`, { method: "POST" }),
+  setOutfit: (outfit) => request("/api/game/outfit", { method: "PUT", json: { outfit } }),
+  // The Semester Simulator.
+  sim: () => request("/api/sim"),
+  simStart: () => request("/api/sim", { method: "POST" }),
+  simAct: (id, action, arg = "") => request(`/api/sim/${id}/act`, { method: "POST", json: { action, arg } }),
+  simBoost: (id, item) => request(`/api/sim/${id}/boost`, { method: "POST", json: { item } }),
+  simChoose: (id, choice) => request(`/api/sim/${id}/choose`, { method: "POST", json: { choice } }),
+  simEndWeek: (id) => request(`/api/sim/${id}/end-week`, { method: "POST" }),
   addCard: (id, { focus, purpose }) => request(`/api/papers/${id}/cards`, { method: "POST", json: { focus: focus || "", purpose: purpose || "" } }),
 };
 

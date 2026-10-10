@@ -18,6 +18,7 @@ os.environ.update(
     DATA_DIR=tempfile.mkdtemp(prefix="research-pal-e2e-"), APP_PASSWORD="e2e-password-123", SECRET_KEY="e" * 40, EMBEDDING_BACKEND="hash",
     GROQ_API_KEY="fake", GEMINI_API_KEY="", OPENROUTER_API_KEY="", LLM_PROVIDER="gemini", LLM_FALLBACK="groq",
     LLM_MODEL="", LLM_API_KEY="", LLM_BASE_URL="", GEMINI_MODEL="", GROQ_MODEL="", MIN_TEXT_CHARS="200", FRONTEND_ORIGIN=args.origin,
+    SUPABASE_URL="", SUPABASE_SERVICE_KEY="", DATABASE_URL="", ALLOWED_EMAILS="",  # one-user mode, whatever is in .env
 )
 
 import uvicorn

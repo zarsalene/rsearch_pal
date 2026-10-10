@@ -60,6 +60,20 @@ Select a word or a short term in a card or in the chat. A small box opens.
 - Click **Save to glossary** to keep the word. The **Glossary** tab lists your words. You can search and delete them. The backup file holds your glossary.
 - The server makes the text again when you save a word. The page cannot send its own text.
 
+## Play (the game)
+
+The **Play** tab turns your reading into a game. The rule: **points only for real work that the server checks.** The page cannot send points, prices or damage. The server decides.
+
+- **Boss fight.** Each paper has a boss. Click **Fight the boss** on a card. The AI writes questions from the **checked quotes** of the card. The server looks for each quote in the PDF again. It drops a question when the quote is not in the PDF, when the right answer is not in the quote, or when a wrong answer is true. The right answer shows only after you answer. Then you see the quote and its page. A right answer hurts the boss. Three in a row is a combo. A wrong answer costs a heart. A lost fight costs nothing, and the next fight has new questions.
+- **Card collection.** Each paper is a card with a rank. Seen, Read (3 claims with a checked quote), Explained (your own work: a word, a note, an edit), Mastered (you defeated the boss).
+- **Fog map.** Papers are islands. A possible link between two papers lies in the fog. Click it and the AI explains the link with quotes. A checked quote opens the fog. A link without a checked quote stays unclear and gives no points.
+- **Duck.** A companion that grows with your level. It says only kind things.
+- **XP, levels, streak.** XP comes from a ready card, a saved word, a note with a quote, an explained link and boss fights. A level needs XP **and** a skill. The streak is kind: weekends are free, and you have 2 rest days each week. After a long pause you get a "welcome back" bonus.
+- **Quests.** Three quests each week. Only real work completes them. A missed quest has no penalty.
+- **Sparks and shop.** 1 XP gives 1 Spark. Spend Sparks on hats for the Duck and on boosts for the simulator. A purchase never lowers your level.
+- **Semester Simulator.** A turn-based simulation of 12 weeks. Each week you have 5 action points. Read, test, write, meet your supervisor or rest. Events arrive and ask for a choice with a risk. Work without rest and you burn out. The simulation runs on the server. It starts from your real work: mastered papers give knowledge, a reviewer asks about **your** papers, and the report names the papers that you did not know. It gives no XP, because XP is only for real work.
+- **Settings.** The switch **Play** turns the whole game off. **Game feel** has sound and a calm mode (no confetti, no shaking). Your data stays when you switch the game off.
+
 ## AI use log
 
 The app writes one line for each answer of the AI: the time, the feature, the paper and the model. **Settings** shows how many times the AI helped. You can use this record for the AI use statement of your thesis.

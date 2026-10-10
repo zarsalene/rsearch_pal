@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "./api.js";
 import { Icon } from "./icons.jsx";
+import { featureOn, useApp } from "./store.js";
 
 // The student chooses the default AI, one fallback, and the model of each. API keys stay in the server environment.
 function AiChoice({ config, onConfig, notify }) {
@@ -131,6 +132,38 @@ function FeatureSwitches({ features, onFeatures, notify }) {
   );
 }
 
+// The game feels. Both choices stay in this browser.
+function GamePrefs() {
+  const prefs = useApp((s) => s.prefs);
+  const setPref = useApp((s) => s.setPref);
+  return (
+    <div className="group">
+      <h2>Game feel</h2>
+      <p className="muted">Sound and movement of the game. Calm mode has no confetti and no shaking. It starts on when your phone asks to reduce motion.</p>
+      <ul className="switches">
+        <li>
+          <label className="switchrow">
+            <input type="checkbox" role="switch" checked={prefs.sound} onChange={() => setPref("sound", !prefs.sound)} />
+            <span>
+              <strong>Sound effects</strong>
+              <span className="muted small"> Soft sounds for right answers, wins and level ups.</span>
+            </span>
+          </label>
+        </li>
+        <li>
+          <label className="switchrow">
+            <input type="checkbox" role="switch" checked={prefs.calm} onChange={() => setPref("calm", !prefs.calm)} />
+            <span>
+              <strong>Calm mode</strong>
+              <span className="muted small"> No confetti, no shaking, a quiet Duck.</span>
+            </span>
+          </label>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 // Each answer of the AI is written in a log. The log has no text of your papers. It says which feature, which paper and which model.
 function AiUse({ notify }) {
   const [log, setLog] = useState(null);
@@ -228,6 +261,7 @@ export default function Settings({ config, features, onConfig, onFeatures, onImp
       <AiChoice config={config} onConfig={onConfig} notify={notify} />
 
       <FeatureSwitches features={features} onFeatures={onFeatures} notify={notify} />
+      {features && featureOn(features, "game") && <GamePrefs />}
 
       <div className="group">
         <h2>AI and privacy</h2>

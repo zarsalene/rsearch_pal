@@ -7,6 +7,31 @@ import {
   ChartBar,
   ChatCircleText,
   CheckCircle,
+  Coffee,
+  Coins,
+  Compass,
+  Crown,
+  Fire,
+  Flask,
+  GraduationCap,
+  Handshake,
+  Heart,
+  HeartBreak,
+  Lightbulb,
+  Lightning,
+  MapTrifold,
+  Medal,
+  PencilLine,
+  Play,
+  Scroll,
+  SpeakerHigh,
+  SpeakerSlash,
+  Star,
+  Storefront,
+  Sword,
+  Trophy,
+  Users,
+  Cards,
   DownloadSimple,
   Flag,
   FileText,
@@ -72,12 +97,38 @@ const ICONS = {
   monitor: Monitor,
   book: BookOpen,
   sidebar: SidebarSimple,
+  // the game
+  trophy: Trophy,
+  fire: Fire,
+  heart: Heart,
+  heartbreak: HeartBreak,
+  bolt: Lightning,
+  sword: Sword,
+  crown: Crown,
+  star: Star,
+  compass: Compass,
+  map: MapTrifold,
+  cards: Cards,
+  coin: Coins,
+  shop: Storefront,
+  coffee: Coffee,
+  flask: Flask,
+  write: PencilLine,
+  meet: Handshake,
+  people: Users,
+  idea: Lightbulb,
+  scroll: Scroll,
+  medal: Medal,
+  play: Play,
+  cap: GraduationCap,
+  sound: SpeakerHigh,
+  mute: SpeakerSlash,
 };
 
-export function Icon({ name, size = 18, className = "" }) {
+export function Icon({ name, size = 18, className = "", weight = "regular" }) {
   const Glyph = ICONS[name];
   if (!Glyph) return null;
-  return <Glyph className={"icon " + className} size={size} weight="regular" aria-hidden="true" />;
+  return <Glyph className={"icon " + className} size={size} weight={weight} aria-hidden="true" />;
 }
 
 // App mark: the Research Pal icon (chat bubble with a magnifier), cropped to the symbol.

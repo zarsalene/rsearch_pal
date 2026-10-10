@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { getToken, setToken } from "./api.js";
 import Login from "./Login.jsx";
@@ -13,6 +13,9 @@ import ThemeToggle from "./ThemeToggle.jsx";
 import LevelToggle from "./LevelToggle.jsx";
 import Glossary from "./Glossary.jsx";
 import WordHelper from "./WordHelper.jsx";
+import Play from "./Play.jsx";
+import GameBar from "./GameBar.jsx";
+import GameLayer from "./GameLayer.jsx";
 import { setSimpleEnabled } from "./level.js";
 import { initNative, tap } from "./native.js";
 import { featureOn, isPhone, useApp } from "./store.js";
@@ -23,13 +26,14 @@ const TABS = [
   ["search", "Search", "search"],
   ["glossary", "Glossary", "book"],
   ["links", "Links", "graph"],
+  ["play", "Play", "trophy"],
   ["settings", "Settings", "sliders"],
 ];
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken());
   const { tab, papers, selected, config, features, glossKey, notice, libOpen } = useApp();
-  const { setTab, notify, setConfig, setFeatures, bumpGlossary, toggleLibrary, closeLibrary, refresh, select, openPaper, load } = useApp.getState();
+  const { setTab, notify, setConfig, setFeatures, bumpGlossary, toggleLibrary, closeLibrary, refresh, refreshGame, select, openPaper, load } = useApp.getState();
 
   // The Android back button closes the drawer first. The function reads the store at the moment of the press, so it is never old.
   useEffect(
@@ -76,6 +80,26 @@ export default function App() {
     return () => clearInterval(t);
   }, [authed, busy, refresh]);
 
+  // The game looks again when a paper becomes ready (a new card earns XP), and when the student did work on the server (a note, a link, a word).
+  const wasBusy = useRef(false);
+  useEffect(() => {
+    if (wasBusy.current && !busy) refreshGame();
+    wasBusy.current = busy;
+  }, [busy, refreshGame]);
+  useEffect(() => {
+    if (!authed) return undefined;
+    let timer;
+    const onWork = () => {
+      clearTimeout(timer);
+      timer = setTimeout(refreshGame, 900);
+    };
+    window.addEventListener("rp-work", onWork);
+    return () => {
+      window.removeEventListener("rp-work", onWork);
+      clearTimeout(timer);
+    };
+  }, [authed, refreshGame]);
+
   // Select the first paper when the list loads
   useEffect(() => {
     if (!selected && papers.length) select(papers[0].id);
@@ -83,8 +107,8 @@ export default function App() {
   }, [papers, selected, select]);
 
   const on = (name) => featureOn(features, name);
-  const shownTabs = TABS.filter(([k]) => (k !== "chat" || on("chat")) && (k !== "glossary" || on("glossary")));
-  const page = (tab === "chat" && !on("chat")) || (tab === "glossary" && !on("glossary")) ? "cards" : tab;
+  const shownTabs = TABS.filter(([k]) => (k !== "chat" || on("chat")) && (k !== "glossary" || on("glossary")) && (k !== "play" || on("game")));
+  const page = (tab === "chat" && !on("chat")) || (tab === "glossary" && !on("glossary")) || (tab === "play" && !on("game")) ? "cards" : tab;
 
   if (!authed) {
     return (
@@ -129,6 +153,7 @@ export default function App() {
           ))}
         </nav>
         <div className="bar-end">
+          {on("game") && <GameBar />}
           {on("simple") && <LevelToggle />}
           <ThemeToggle />
         </div>
@@ -198,6 +223,7 @@ export default function App() {
                 {page === "glossary" && <Glossary reloadKey={glossKey} notify={notify} />}
                 {page === "search" && <Search onOpenCard={openPaper} notify={notify} />}
                 {page === "links" && <LinksTab onOpenCard={openPaper} notify={notify} />}
+                {page === "play" && <Play notify={notify} />}
                 {page === "settings" && (
                   <Settings
                     config={config}
@@ -223,6 +249,7 @@ export default function App() {
           )}
         </main>
       </div>
+      {on("game") && <GameLayer />}
       {/* The word box. It opens when you select a word in a card or in the chat. */}
       <WordHelper paperId={on("glossary") && (page === "cards" || page === "chat") ? selected || "" : ""} notify={notify} onSaved={bumpGlossary} />
     </div>

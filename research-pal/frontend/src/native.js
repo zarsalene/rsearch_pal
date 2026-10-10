@@ -51,3 +51,14 @@ export function initNative(onBack) {
     handle?.remove();
   };
 }
+
+// A stronger feedback for the game: "light" (a small tap), "success" (a win), "warn" (a wrong answer, soft). Safe to call anywhere.
+export async function buzz(kind = "light") {
+  if (!isNative) return;
+  try {
+    const { Haptics, ImpactStyle, NotificationType } = await import("@capacitor/haptics");
+    if (kind === "success") await Haptics.notification({ type: NotificationType.Success });
+    else if (kind === "warn") await Haptics.notification({ type: NotificationType.Warning });
+    else await Haptics.impact({ style: ImpactStyle.Light });
+  } catch {}
+}

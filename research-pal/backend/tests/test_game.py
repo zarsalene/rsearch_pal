@@ -421,8 +421,8 @@ def test_each_week_has_three_quests_and_the_pick_does_not_change(client, auth_he
     assert len(a) == 3 and len({q["code"] for q in a}) == 3
     assert client.get("/api/game", headers=auth_headers).json()["quests"] == a
     assert all(q["have"] == 0 and q["done"] is False and q["xp"] == 20 for q in a)
-    week = game._week(game._day(time.time()))
-    assert [q["code"] for q in game.quests([], week * 7 - 3)] != [q["code"] for q in game.quests([], (week + 3) * 7 - 3)] or True  # another week, another pick (may be the same by luck)
+    picks = {tuple(q["code"] for q in game.quests([], day)) for day in range(0, 7 * 40, 7)}
+    assert len(picks) > 5  # over many weeks the picks change
 
 
 def test_a_quest_is_done_by_real_work_and_pays_one_time(client, auth_headers, monkeypatch):
@@ -464,11 +464,14 @@ def test_a_welcome_back_after_a_pause(client, auth_headers):
     assert client.get("/api/game", headers=auth_headers).json()["new"] == []  # one time for each day
 
 
-def test_no_welcome_back_without_a_pause_and_none_for_a_new_player(client, auth_headers):
-    db.xp_add("word_saved", "yesterday", 3, time.time() - 2 * 86400)
+def test_no_welcome_back_without_a_pause(client, auth_headers):
+    db.xp_add("word_saved", "two-days-ago", 3, time.time() - 2 * 86400)
     db.xp_add("word_saved", "today", 3)
     assert client.get("/api/game", headers=auth_headers).json()["new"] == []
-    db.xp_add("word_saved", "first", 3, time.time() - 30 * 86400)  # an older day exists: but the day before today has work
+
+
+def test_no_welcome_back_for_a_new_player(client, auth_headers):
+    db.xp_add("word_saved", "first", 3)
     assert client.get("/api/game", headers=auth_headers).json()["new"] == []
 
 

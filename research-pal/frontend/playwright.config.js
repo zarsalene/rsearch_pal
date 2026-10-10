@@ -26,7 +26,8 @@ export default defineConfig({
     },
     {
       command: "npm run dev -- --port 5174 --strictPort",
-      env: { VITE_API_URL: API },
+      // The tests use the one-password login, whatever is in frontend/.env (no email accounts).
+      env: { VITE_API_URL: API, VITE_SUPABASE_URL: "", VITE_SUPABASE_ANON_KEY: "" },
       url: APP,
       reuseExistingServer: false,
       timeout: 60_000,

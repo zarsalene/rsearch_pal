@@ -4,6 +4,7 @@ import { Icon } from "./icons.jsx";
 import MindMap from "./MindMap.jsx";
 import SimpleText from "./SimpleText.jsx";
 import ListenButton, { PaperReader } from "./ListenButton.jsx";
+import { featureOn, useApp } from "./store.js";
 
 const ORDER = [
   ["question", "My question"],
@@ -124,6 +125,31 @@ function Summary({ card, paperId, cardId }) {
         </div>
       )}
     </section>
+  );
+}
+
+// The boss of this paper. The questions come from the checked quotes of the card, so the fight tests what the card proves.
+function BossBar({ card, paperId }) {
+  const features = useApp((s) => s.features);
+  const rank = useApp((s) => s.game?.ranks?.[paperId]);
+  const openBattle = useApp((s) => s.openBattle);
+  if (!featureOn(features, "game")) return null;
+  const checked = CLAIMS.filter(([k]) => ["verified", "check"].includes(card.fields?.[k]?.status)).length;
+  if (checked < 2) return null;
+  const won = rank === 3;
+  return (
+    <div className={"bossbar" + (won ? " won" : "")}>
+      <span className="bossicon">
+        <Icon name={won ? "crown" : "sword"} size={22} weight="fill" />
+      </span>
+      <div>
+        <strong>{won ? "Boss defeated" : "Boss fight"}</strong>
+        <span>{won ? "You know this paper. Fight again for practice." : "Test what you learned. The questions come from the checked quotes of this card."}</span>
+      </div>
+      <button className="btn" onClick={() => openBattle(paperId)}>
+        {won ? "Fight again" : "Fight the boss"}
+      </button>
+    </div>
   );
 }
 
@@ -503,6 +529,8 @@ export default function CardView({ id, onChanged, onDeleted, notify }) {
       )}
 
       {card && <Summary card={card} paperId={id} cardId={cid} />}
+
+      {card && !cid && !inProgress && <BossBar card={card} paperId={id} />}
 
       {card && (() => {
         const missing = CLAIMS.filter(([k]) => card.fields?.[k]?.status === "not_found");
