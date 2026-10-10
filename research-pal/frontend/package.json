@@ -11,7 +11,9 @@
     "e2e": "playwright test",
     "mobile:sync": "vite build && cap sync",
     "mobile:android": "npm run mobile:sync && cap open android",
-    "mobile:ios": "npm run mobile:sync && cap open ios"
+    "mobile:ios": "npm run mobile:sync && cap open ios",
+    "phone": "node scripts/phone-sim.mjs",
+    "test:mobile": "playwright test e2e/mobile.spec.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",

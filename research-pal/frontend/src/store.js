@@ -1,11 +1,24 @@
 // One store for the state of the whole app (Zustand). A component reads only the part that it needs,
 // so a change in one place does not draw the whole app again. The actions live here, next to the state.
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { api } from "./api.js";
 import { confetti, getPrefs, play, savePref } from "./juice.js";
 
 export const PHONE = "(max-width: 820px)";
 export const isPhone = () => window.matchMedia(PHONE).matches;
+// True on a phone, and it changes when the window changes (a phone turned sideways, a window resized).
+export function usePhone() {
+  return useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia(PHONE);
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
+    },
+    isPhone,
+    () => false,
+  );
+}
 
 // The library can open and close. The choice is saved in this browser.
 function startLibraryOpen() {
@@ -30,13 +43,15 @@ export const useApp = create((set, get) => ({
   glossKey: 0, // changes when a word is saved, so the Glossary page reloads
   notice: "",
   libOpen: startLibraryOpen(),
+  more: false, // the sheet "More" of the phone (the tabs that do not fit in the bottom bar)
   game: null, // the level, the XP, the streak, the shop ... from the server (see game.py). null until the first answer.
   rewards: [], // short messages about what the student earned
   levelUp: null, // the name of a new level: shows a big card
   battle: null, // the id of the paper in a boss fight
   prefs: getPrefs(), // sound and calm mode
 
-  setTab: (tab) => set({ tab, notice: "" }),
+  setTab: (tab) => set({ tab, notice: "", more: false }),
+  setMore: (more) => set({ more }),
   notify: (notice) => set({ notice }),
   setConfig: (config) => set({ config }),
   setFeatures: (features) => set({ features }),

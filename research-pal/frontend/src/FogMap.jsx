@@ -120,7 +120,7 @@ export default function FogMap({ notify }) {
             </g>
           );
         })}
-        <rect className="fog" width={W} height={H} rx="16" mask={`url(#${id}clear)`} />
+        <rect className="fogsheet" width={W} height={H} rx="16" mask={`url(#${id}clear)`} />
         {m.edges.map((e) => {
           const a = pos[e.source];
           const b = pos[e.target];

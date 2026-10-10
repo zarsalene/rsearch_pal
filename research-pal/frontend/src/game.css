@@ -184,7 +184,7 @@
 .fedge.found{stroke:var(--gold);stroke-width:4;filter:drop-shadow(0 0 5px var(--gold))}
 .fedge.unclear{stroke:var(--bad);stroke-width:2;stroke-dasharray:1 7;opacity:.8}
 .fedge.sel{stroke-width:5}
-.fog{fill:var(--fog);pointer-events:none}
+.fogsheet{fill:var(--fog);pointer-events:none}  /* not .fog: a mark in the fog has the class fog, and it must get clicks */
 .fnode{cursor:pointer;outline:none}
 .fnode .core{fill:var(--r0);stroke:var(--surface);stroke-width:3}
 .fnode .halo{fill:none;stroke:var(--r0);stroke-width:2;opacity:.5}
@@ -307,6 +307,10 @@
 }
 
 /* ---------- phone ---------- */
+.main{min-width:0}
+.play .viewseg{display:flex;width:fit-content;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.play .viewseg::-webkit-scrollbar{display:none}
+.play .viewseg button{flex:none}
 @media (max-width:820px){
   .gb-level{display:none}
   .gamebar{margin-right:6px;padding-right:9px}
@@ -329,8 +333,10 @@
   .bossbar{flex-wrap:wrap}
   .bossbar .btn{width:100%}
 }
+@media (max-width:560px){
+  .gamebar{display:none} /* the top bar of a phone has no room: the Play tab shows the Duck, the streak and the Sparks */
+}
 @media (max-width:480px){
-  .gamebar .gb-chip:nth-of-type(2){display:none}
   .gcards{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){

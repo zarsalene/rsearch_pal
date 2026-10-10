@@ -16,9 +16,13 @@ import WordHelper from "./WordHelper.jsx";
 import Play from "./Play.jsx";
 import GameBar from "./GameBar.jsx";
 import GameLayer from "./GameLayer.jsx";
+import MoreSheet from "./MoreSheet.jsx";
 import { setSimpleEnabled } from "./level.js";
 import { initNative, tap } from "./native.js";
-import { featureOn, isPhone, useApp } from "./store.js";
+import { featureOn, isPhone, usePhone, useApp } from "./store.js";
+
+// On a phone the bottom bar has these four tabs. The other pages are in the sheet "More".
+const DOCK = ["cards", "chat", "search", "play"];
 
 const TABS = [
   ["cards", "Card", "doc"],
@@ -32,14 +36,19 @@ const TABS = [
 
 export default function App() {
   const [authed, setAuthed] = useState(!!getToken());
-  const { tab, papers, selected, config, features, glossKey, notice, libOpen } = useApp();
-  const { setTab, notify, setConfig, setFeatures, bumpGlossary, toggleLibrary, closeLibrary, refresh, refreshGame, select, openPaper, load } = useApp.getState();
+  const { tab, papers, selected, config, features, glossKey, notice, libOpen, more } = useApp();
+  const phone = usePhone();
+  const { setTab, setMore, notify, setConfig, setFeatures, bumpGlossary, toggleLibrary, closeLibrary, refresh, refreshGame, select, openPaper, load } = useApp.getState();
 
   // The Android back button closes the drawer first. The function reads the store at the moment of the press, so it is never old.
   useEffect(
     () =>
       initNative(() => {
-        const { libOpen: open, closeLibrary: close } = useApp.getState();
+        const { libOpen: open, closeLibrary: close, more: sheet, setMore: closeMore } = useApp.getState();
+        if (sheet) {
+          closeMore(false);
+          return true;
+        }
         if (open && isPhone()) {
           close();
           return true;
@@ -108,6 +117,9 @@ export default function App() {
 
   const on = (name) => featureOn(features, name);
   const shownTabs = TABS.filter(([k]) => (k !== "chat" || on("chat")) && (k !== "glossary" || on("glossary")) && (k !== "play" || on("game")));
+  const dockTabs = phone ? shownTabs.filter(([k]) => DOCK.includes(k)) : shownTabs;
+  const moreTabs = phone ? shownTabs.filter(([k]) => !DOCK.includes(k)) : [];
+  const moreActive = more || moreTabs.some(([k]) => k === tab);
   const page = (tab === "chat" && !on("chat")) || (tab === "glossary" && !on("glossary")) || (tab === "play" && !on("game")) ? "cards" : tab;
 
   if (!authed) {
@@ -134,7 +146,7 @@ export default function App() {
           <span className="brand-name">Research Pal</span>
         </div>
         <nav className="tabs" role="tablist" aria-label="Sections">
-          {shownTabs.map(([k, label, icon]) => (
+          {dockTabs.map(([k, label, icon]) => (
             <button
               key={k}
               role="tab"
@@ -152,13 +164,21 @@ export default function App() {
               <span className="tl">{label}</span>
             </button>
           ))}
+          {moreTabs.length > 0 && (
+            <button role="tab" aria-selected={moreActive} aria-haspopup="dialog" aria-expanded={more} aria-label="More" title="More" onClick={() => { setMore(!more); tap(); }}>
+              {moreActive && <motion.span layoutId="tabpill" className="tabpill" transition={{ type: "spring", stiffness: 520, damping: 40 }} />}
+              <Icon name="dots" size={16} />
+              <span className="tl">More</span>
+            </button>
+          )}
         </nav>
         <div className="bar-end">
           {on("game") && <GameBar />}
           {on("simple") && <LevelToggle />}
-          <ThemeToggle />
+          {!phone && <ThemeToggle />}
         </div>
       </header>
+      <MoreSheet open={more} tabs={moreTabs} current={tab} onPick={setTab} onClose={() => setMore(false)} />
 
       <AnimatePresence>
         {notice && (

@@ -8,6 +8,7 @@ import {
   ChatCircleText,
   CheckCircle,
   Coffee,
+  DotsThreeOutline,
   Coins,
   Compass,
   Crown,
@@ -99,6 +100,7 @@ const ICONS = {
   sidebar: SidebarSimple,
   // the game
   trophy: Trophy,
+  dots: DotsThreeOutline,
   fire: Fire,
   heart: Heart,
   heartbreak: HeartBreak,
