@@ -11,7 +11,8 @@ on:
   push:
     paths:
       - .github/workflows/android-apk.yml
-      - research-pal/frontend/**
+      - research-pal/web/**
+      - research-pal/mobile/**
 
 # The release step needs the right to write releases.
 permissions:
@@ -23,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: research-pal/frontend
+        working-directory: research-pal/mobile
     env:
       VITE_API_URL: ${{ vars.API_URL || 'https://research-pal-api.onrender.com' }}
       VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL || 'https://iqqqearogsjtplheugsk.supabase.co' }}
@@ -34,13 +35,20 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: research-pal/frontend/package-lock.json
+          cache-dependency-path: |
+            research-pal/web/package-lock.json
+            research-pal/mobile/package-lock.json
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
+      # 1. The web app: the phone app is this build inside a native shell.
       - run: npm ci
+        working-directory: research-pal/web
       - run: npx vite build
+        working-directory: research-pal/web
+      # 2. The native shell: Capacitor copies ../web/dist into the Android project.
+      - run: npm ci
       - run: npx cap sync android
       - name: Prepare the signing key
         env:
@@ -67,21 +75,21 @@ jobs:
           } >> "$GITHUB_ENV"
       - run: chmod +x android/gradlew
       - run: ./gradlew assembleRelease
-        working-directory: research-pal/frontend/android
+        working-directory: research-pal/mobile/android
       - name: Check the signature
         run: |
           APK=app/build/outputs/apk/release/app-release.apk
           "$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)/apksigner" verify --print-certs "$APK"
           cp "$APK" Research-Pal.apk
-        working-directory: research-pal/frontend/android
+        working-directory: research-pal/mobile/android
       - uses: actions/upload-artifact@v4
         with:
           name: research-pal-apk
-          path: research-pal/frontend/android/Research-Pal.apk
+          path: research-pal/mobile/android/Research-Pal.apk
       # A public download link, without a zip and without a login:
       # https://github.com/${{ github.repository }}/releases/download/android-latest/Research-Pal.apk
       - name: Publish the download link
-        working-directory: research-pal/frontend/android
+        working-directory: research-pal/mobile/android
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

@@ -21,10 +21,10 @@ pytest
 
 Expected: all tests pass in about 15 seconds.
 
-### 2. Frontend (Vitest and Playwright)
+### 2. Web app (Vitest and Playwright)
 
 ```bash
-cd research-pal/frontend
+cd research-pal/web
 npm install
 npx playwright install chromium    # one time, about 120 MB
 npm test                           # unit tests
@@ -32,7 +32,7 @@ npm run build                      # the build must work
 npm run e2e                        # tests in a real browser
 ```
 
-`npm run e2e` starts two servers for you: the backend with a fake AI (port 8001) and the frontend (port 5174).
+`npm run e2e` starts two servers for you: the backend with a fake AI (port 8001) and the web app (port 5174).
 The backend needs the Python that has the packages of the backend. Tell Playwright where it is:
 
 ```bash
@@ -50,8 +50,8 @@ In CI, `python` is the right one, so you need no setting.
 |-------|-------|----------------|
 | Unit and API | `backend/tests/` | One function, or one endpoint with the real app and a fake AI. |
 | Truth | `backend/tests/test_truth.py` | The rule "no wrong data". The fake AI gives a false quote or a false number. The server must hide it or label it. |
-| Frontend unit | `frontend/src/*.test.jsx` | One component. |
-| End to end | `frontend/e2e/` | A full user path in a real browser. |
+| Web unit | `web/src/*.test.jsx` | One component. |
+| End to end | `web/e2e/` | A full user path in a real browser. The phone layout tests are in `web/e2e/mobile.spec.js`. |
 | Real AI smoke test | `backend/scripts/smoke_real_ai.py` | Real papers with the real AI. You run it by hand and read the result. |
 
 ## The test tools
@@ -112,7 +112,7 @@ Add `--fast-embeddings` to skip the 80 MB download of the search model.
 
 ## Continuous integration (CI)
 
-`.github/workflows/ci.yml` runs on each push: the backend tests, the frontend tests, the build and the end-to-end tests.
+`.github/workflows/ci.yml` runs on each push: the backend tests, the web tests, the build and the end-to-end tests.
 If one test fails, the push shows a red mark on GitHub.
 
 ## Fix a failing test

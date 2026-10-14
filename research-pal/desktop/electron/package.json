@@ -1,0 +1,33 @@
+{
+  "name": "research-pal-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Research Pal desktop app (Electron window + private Python server)",
+  "author": "Research Pal",
+  "main": "main.js",
+  "scripts": {
+    "start": "node start.js",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "latest"
+  },
+  "build": {
+    "appId": "com.researchpal.desktop",
+    "productName": "Research Pal",
+    "directories": { "output": "dist" },
+    "files": ["main.js"],
+    "extraResources": [
+      { "from": "stage/python", "to": "python" },
+      { "from": "stage/server", "to": "server" }
+    ],
+    "win": { "icon": "icon.png" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Research-Pal-Setup-${version}.${ext}"
+    }
+  }
+}

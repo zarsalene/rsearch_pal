@@ -1,15 +1,17 @@
-"""Makes the Android launcher icons and the splash screen from public/logo.png.
-Run it from the frontend folder:  python scripts/make-android-icons.py   (needs Pillow: pip install pillow)
+"""Makes the Android launcher icons and the splash screen from the logo of the web app.
+Run it from the mobile folder:  python scripts/make-android-icons.py   (needs Pillow: pip install pillow)
+The logo is in the web app (web/public/logo.png). The icons go into mobile/android.
 The background color is the dark blue of the logo."""
 from pathlib import Path
 from PIL import Image, ImageDraw
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent  # mobile/
+WEB = ROOT.parent / "web"
 RES = ROOT / "android/app/src/main/res"
 BG = (16, 21, 49, 255)  # #101531, the dark blue of the logo
 BG_HEX = "#101531"
 
-logo = Image.open(ROOT / "public/logo.png").convert("RGBA")
+logo = Image.open(WEB / "public/logo.png").convert("RGBA")
 logo = logo.crop(logo.split()[3].getbbox())
 
 

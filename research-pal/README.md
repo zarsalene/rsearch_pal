@@ -91,11 +91,30 @@ The app writes one line for each answer of the AI: the time, the feature, the pa
 
 ## What is in the box
 
+Four parts. Each part has its own folder:
+
 ```
-backend/    FastAPI + ChromaDB (local) + pypdf. AI through Gemini (default), Groq (fallback), OpenRouter or Ollama.
-frontend/   React (Vite).
+backend/    The server. FastAPI + ChromaDB (local) + pypdf. AI through Gemini (default), Groq (fallback), OpenRouter or Ollama.
+web/        The web app. React (Vite). It talks to the backend over HTTP.
+mobile/     The Android app. A Capacitor shell that holds the build of web/. Read mobile/README.md.
+desktop/    The Windows app. An Electron window and the backend on your computer. Read desktop/README.md.
+docs/       The test guide and the sprint plans.
+supabase/   The database schema for multi-user mode.
 render.yaml Settings for Render (backend).
 ```
+
+### How the parts link
+
+| From | To | How |
+|---|---|---|
+| web | backend | HTTP. The address is `VITE_API_URL` in `web/.env`. The backend allows the address of the web app in `FRONTEND_ORIGIN`. |
+| mobile | web | Capacitor copies the build `web/dist` into the Android project (`webDir` in `mobile/capacitor.config.json`). `npm run sync` in `mobile/` builds the web app first. |
+| mobile | backend | HTTP, with the same address as the web app. The address is fixed when the web app is built (`VITE_API_URL`). The backend always allows the origin of the phone app. |
+| desktop | web | `desktop/build_ui.py` builds `web/` into `desktop/ui/`, with a relative API address and without Supabase. |
+| desktop | backend | `desktop/app.py` loads `backend/app` and runs it on `127.0.0.1`. |
+| web tests | backend | Playwright starts `backend/scripts/fake_server.py` (a fake AI) next to the web app. |
+
+If you move a folder, change these links.
 
 ## Run on your computer (5 minutes)
 
@@ -111,7 +130,7 @@ uvicorn app.main:app --reload --port 8000
 In a second terminal:
 
 ```bash
-cd frontend
+cd web
 cp .env.example .env     # VITE_API_URL=http://localhost:8000
 npm install
 npm run dev              # open http://localhost:5173
@@ -137,8 +156,8 @@ Create a private repository and push this folder.
 2. Set the variables: `APP_PASSWORD` (long), `SECRET_KEY` (at least 24 random characters), `GEMINI_API_KEY`, `GROQ_API_KEY`, `LLM_PROVIDER=gemini`, `LLM_FALLBACK=groq`, `FRONTEND_ORIGIN` (you set the real value in step 5), `PYTHON_VERSION=3.11.9`.
 3. Deploy. Test: open `https://YOUR-API.onrender.com/api/health`. You must see `{"ok":true}`.
 
-### 4. Frontend on Vercel
-1. Vercel → Add New → Project → select the repository. Root directory: `research-pal/frontend` (or `frontend` if the app is at the top of your repository).
+### 4. Web app on Vercel
+1. Vercel → Add New → Project → select the repository. Root directory: `research-pal/web` (or `web` if the app is at the top of your repository).
 2. Variable: `VITE_API_URL` = your Render address (no slash at the end).
 3. Deploy. You get an address like `https://research-pal.vercel.app`.
 
@@ -172,7 +191,7 @@ All tests use a fake AI. They need no API key and no network. Read [docs/TESTING
 cd backend
 pip install -r requirements.txt -r requirements-dev.txt
 pytest                      # backend tests, about 15 seconds
-cd ../frontend
+cd ../web
 npm install
 npm test                    # unit tests
 npm run e2e                 # tests in a real browser

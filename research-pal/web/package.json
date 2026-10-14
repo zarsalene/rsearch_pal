@@ -1,5 +1,5 @@
 {
-  "name": "research-pal-frontend",
+  "name": "research-pal-web",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -9,18 +9,13 @@
     "preview": "vite preview",
     "test": "vitest run",
     "e2e": "playwright test",
-    "mobile:sync": "vite build && cap sync",
-    "mobile:android": "npm run mobile:sync && cap open android",
-    "mobile:ios": "npm run mobile:sync && cap open ios",
     "phone": "node scripts/phone-sim.mjs",
     "test:mobile": "playwright test e2e/mobile.spec.js"
   },
   "dependencies": {
-    "@capacitor/android": "^8.5.3",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.3",
     "@capacitor/haptics": "^8.0.2",
-    "@capacitor/ios": "^8.5.3",
     "@capacitor/splash-screen": "^8.0.2",
     "@capacitor/status-bar": "^8.0.4",
     "@fontsource-variable/geist": "^5.3.0",
@@ -32,7 +27,6 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.5.3",
     "@playwright/test": "^1.64.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",

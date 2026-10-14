@@ -92,7 +92,7 @@ async function request(path, { method = "GET", json, form, raw } = {}) {
     throw new Error(msg);
   }
   // Work changed on the server (a note, a link, a word ...). The game looks again, to see if the work earned XP.
-  if (method !== "GET" && !/^\/api\/(game|battles|sim)/.test(path) && typeof window !== "undefined") window.dispatchEvent(new Event("rp-work"));
+  if (method !== "GET" && !/^\/api\/(game|battles|sim|tts)/.test(path) && typeof window !== "undefined") window.dispatchEvent(new Event("rp-work"));
   return raw ? res : res.json();
 }
 
@@ -132,6 +132,8 @@ export const api = {
   // Simple mode: the simple version of a text of the card (the server reads the text itself) or of any text of the AI.
   simplifyField: (id, field, cardId = "") => request(`/api/papers/${id}/simplify`, { method: "POST", json: { field, card_id: cardId || "" } }),
   readPage: (id, n) => request(`/api/papers/${id}/read/${n}`),
+  // The voice of one short text (Piper, on the server). Gives the WAV file as a Blob.
+  speak: async (text) => (await request("/api/tts", { method: "POST", json: { text }, raw: true })).blob(),
   simplifyText: (text) => request("/api/simplify", { method: "POST", json: { text } }),
   // Word helper and glossary. The server makes the explanation. The page sends only the word and the paper.
   define: (id, term) => request(`/api/papers/${id}/define`, { method: "POST", json: { term } }),

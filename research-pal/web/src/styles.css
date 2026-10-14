@@ -54,7 +54,7 @@
 
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0}
-body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;letter-spacing:-.011em;font-feature-settings:"calt","kern","cv11";-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;letter-spacing:-.011em;font-feature-settings:"calt","kern","cv11";-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;overflow-wrap:break-word}
 h1{font-size:2rem;line-height:1.12;letter-spacing:-.03em;font-weight:700;margin:0 0 8px;text-wrap:balance}
 h2{font-size:1.15rem;letter-spacing:-.02em;font-weight:650;margin:32px 0 6px;text-wrap:balance}
 h3{font-size:.95rem;letter-spacing:-.01em;font-weight:600;margin:0}
@@ -175,6 +175,7 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .card-head{margin-bottom:24px}
 .card h1{font-weight:650;font-size:2.15rem;line-height:1.14;letter-spacing:-.03em;max-width:28ch;margin-bottom:10px}
 .meta{display:flex;flex-wrap:wrap;gap:2px 0;color:var(--muted);font-size:.82rem;font-variant-numeric:tabular-nums}
+.meta span{min-width:0;max-width:100%;overflow-wrap:anywhere}
 .meta span+span::before{content:"";display:inline-block;width:1px;height:.9em;margin:0 11px;vertical-align:-.1em;background:var(--line-strong)}
 .kw{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
 .kwchip{background:var(--fill);color:var(--muted);border-radius:999px;padding:3px 11px;font-size:.78rem;font-weight:550;border:0}

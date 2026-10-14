@@ -10,7 +10,7 @@ You are a senior full-stack engineer. You build the improvement plan of **Resear
 
 - The git root is the folder that contains the folder `research-pal/`. The app is in `research-pal/`.
 - All paths in this prompt are relative to the app folder `research-pal/` (example: `backend/app/llm.py` = `research-pal/backend/app/llm.py`).
-- The CI file must be at the git root: `.github/workflows/ci.yml`, with `working-directory: research-pal/backend` and `research-pal/frontend`.
+- The CI file must be at the git root: `.github/workflows/ci.yml`, with `working-directory: research-pal/backend` and `research-pal/web`.
 
 ## 1. Read first (in this order)
 
@@ -18,7 +18,7 @@ You are a senior full-stack engineer. You build the improvement plan of **Resear
 2. `IMPROVEMENT_REPORT.md` — the 40 ideas and the reason for each. The idea codes (A1, B2, C4 ...) come from here.
 3. `docs/sprints/README.md` — the sprint list, the test levels, the Definition of Done, and the rules.
 4. The file of the **current sprint only** in `docs/sprints/`.
-5. The code that the sprint touches. Backend: `backend/app/` (FastAPI, SQLite in `db.py`, ChromaDB in `vectors.py`, AI calls in `llm.py`, quote check in `cards.py`, STE check in `ste.py`). Frontend: `frontend/src/` (React + Vite).
+5. The code that the sprint touches. Backend: `backend/app/` (FastAPI, SQLite in `db.py`, ChromaDB in `vectors.py`, AI calls in `llm.py`, quote check in `cards.py`, STE check in `ste.py`). Web: `web/src/` (React + Vite). The phone app (`mobile/`, Capacitor) and the desktop app (`desktop/`) use the build of `web/`, so a change in `web/src/` reaches them.
 
 Do not start to write code before you have read these files. Read the code; do not guess function names or table columns.
 
@@ -39,7 +39,7 @@ Follow these steps in order. Each sprint is a small separate project.
 4. If a decision is not in the sprint file and has a large effect (new paid service, data loss risk, a big change to an existing feature), stop and ask the owner. For small decisions, choose the simple option and write it in the report.
 
 ### Step 2 — Develop
-1. Backend first, then frontend.
+1. Backend first, then web.
 2. Write the tests of section 4 **together with** the code, not at the end.
 3. Match the style of the existing code: same naming, same comment density, same patterns (example: `Depends(auth.require_auth)` on each new endpoint, `CREATE TABLE IF NOT EXISTS` in `db.py`).
 4. Put each new feature behind its switch in Settings (the `features` table from Sprint 00).
@@ -47,8 +47,8 @@ Follow these steps in order. Each sprint is a small separate project.
 
 ### Step 3 — Test
 1. Run all backend tests: `pytest` in `backend/`.
-2. Run all frontend tests: `npm test` and `npm run e2e` in `frontend/`.
-3. Run `npm run build` in `frontend/`.
+2. Run all web tests: `npm test` and `npm run e2e` in `web/`.
+3. Run `npm run build` in `web/`.
 4. All old and new tests must pass. If an old test fails, fix the code, not the test. Change an old test only when the sprint changes that behavior on purpose, and write why in the report.
 5. If API keys exist in `backend/.env`, run `backend/scripts/smoke_real_ai.py` on 3 PDFs. Check that no false quote shows as verified. If no keys exist, write "smoke test not run: no keys" in the report.
 6. Do not report "tests pass" if you did not run them. Paste the real summary lines of the test output in the report.

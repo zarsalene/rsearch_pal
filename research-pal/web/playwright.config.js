@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// The tests start two servers: the backend with a fake AI (port 8001) and the frontend (port 5174).
+// The tests start two servers: the backend with a fake AI (port 8001) and the web app (port 5174).
 // PYTHON: the Python that has the packages of the backend. In CI it is "python". On your computer, point it to your .venv.
 const PYTHON = process.env.PYTHON || "python";
 const API = "http://localhost:8001";
@@ -18,7 +18,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: `"${PYTHON}" scripts/fake_server.py --port 8001 --origin ${APP} --pdf-dir ../frontend/e2e/.generated`,
+      command: `"${PYTHON}" scripts/fake_server.py --port 8001 --origin ${APP} --pdf-dir ../web/e2e/.generated`,
       cwd: "../backend",
       url: `${API}/api/health`,
       reuseExistingServer: false,
@@ -26,7 +26,7 @@ export default defineConfig({
     },
     {
       command: "npm run dev -- --port 5174 --strictPort",
-      // The tests use the one-password login, whatever is in frontend/.env (no email accounts).
+      // The tests use the one-password login, whatever is in web/.env (no email accounts).
       env: { VITE_API_URL: API, VITE_SUPABASE_URL: "", VITE_SUPABASE_ANON_KEY: "" },
       url: APP,
       reuseExistingServer: false,

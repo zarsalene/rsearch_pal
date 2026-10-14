@@ -1,7 +1,7 @@
 {
   "appId": "tn.microzed.researchpal",
   "appName": "Research Pal",
-  "webDir": "dist",
+  "webDir": "../web/dist",
   "backgroundColor": "#0B0B0E",
   "android": {
     "allowMixedContent": false

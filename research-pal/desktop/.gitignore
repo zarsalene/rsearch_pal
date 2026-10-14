@@ -1,0 +1,4 @@
+ui/
+__pycache__/
+electron/stage/
+electron/dist/

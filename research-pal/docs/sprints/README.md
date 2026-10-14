@@ -46,7 +46,7 @@ Each sprint is a **small separate project**. It has its own goal, its own develo
 | Unit (backend) | `pytest` | One function. Example: the FSRS date, the XP rules. |
 | API (backend) | `pytest` + FastAPI `TestClient` + **fake AI** | Each new endpoint. No real AI call, so the test is fast and the same each time. |
 | Truth test | `pytest` + fake AI that gives a **false quote** | The "no wrong data" rule. A false quote must be hidden or labelled. **Required for each AI feature.** |
-| Unit (frontend) | `Vitest` + React Testing Library | One component. |
+| Unit (web) | `Vitest` + React Testing Library | One component. |
 | End to end | `Playwright` | A full user path in a real browser. |
 | Manual | Checklist in the sprint file | What a person must see and feel (clear, simple, kind). |
 | Real AI smoke test | Script, run by hand | 3 real papers with the real AI. Read the result. |
